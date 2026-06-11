@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--length-adjust", type=float, default=1.0)
     demo.add_argument("--inference-cfg-rate", type=float, default=0.7)
     demo.add_argument("--semi-tone-shift", type=int, default=0)
-    demo.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=True)
+    demo.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=False)
 
     return parser
 

@@ -43,7 +43,7 @@ class PipelineOptions:
     length_adjust: float = 1.0
     inference_cfg_rate: float = 0.7
     semi_tone_shift: int = 0
-    fp16: bool = True
+    fp16: bool = False
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
