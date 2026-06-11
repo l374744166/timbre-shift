@@ -8,6 +8,7 @@ import json
 import math
 import mimetypes
 import re
+import threading
 import time
 import wave
 from http import HTTPStatus
@@ -21,6 +22,52 @@ from .pipeline import PipelineOptions, check_environment, run_demo
 ROOT = Path.cwd()
 UPLOAD_ROOT = ROOT / "data" / "raw" / "web_uploads"
 OUTPUT_DIR = ROOT / "outputs" / "web"
+
+
+class ProgressState:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.reset("待命", 0, "idle")
+
+    def reset(self, step: str, percent: int, status: str) -> None:
+        with self._lock:
+            now = time.time()
+            self.started_at = now
+            self.updated_at = now
+            self.step = step
+            self.percent = percent
+            self.status = status
+            self.error = ""
+
+    def update(self, step: str, percent: int, status: str = "running") -> None:
+        with self._lock:
+            self.step = step
+            self.percent = percent
+            self.status = status
+            self.updated_at = time.time()
+
+    def fail(self, error: str) -> None:
+        with self._lock:
+            self.step = "生成失败"
+            self.percent = max(self.percent, 1)
+            self.status = "failed"
+            self.error = error
+            self.updated_at = time.time()
+
+    def snapshot(self) -> Dict[str, object]:
+        with self._lock:
+            now = time.time()
+            return {
+                "step": self.step,
+                "percent": self.percent,
+                "status": self.status,
+                "error": self.error,
+                "elapsed_seconds": int(now - self.started_at) if self.status != "idle" else 0,
+                "updated_seconds_ago": int(now - self.updated_at),
+            }
+
+
+PROGRESS = ProgressState()
 
 
 def safe_filename(name: str) -> str:
@@ -159,6 +206,36 @@ def page_html() -> str:
       width: min(420px, 100%);
       height: 40px;
     }
+    .progress {
+      display: none;
+      margin-top: 4px;
+      padding: 14px 0 2px;
+      gap: 8px;
+    }
+    .progress.visible {
+      display: grid;
+    }
+    .progress-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e7ebe7;
+      border: 1px solid var(--line);
+    }
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: var(--accent);
+      transition: width 180ms ease;
+    }
     @media (max-width: 640px) {
       main { padding: 28px 0; }
       header, .actions, .result.visible {
@@ -190,6 +267,15 @@ def page_html() -> str:
         <button id="submit" type="submit">生成</button>
         <div id="message" class="message"></div>
       </div>
+      <div id="progress" class="progress">
+        <div class="progress-meta">
+          <span id="progressStep">待命</span>
+          <span id="progressTime">00:00</span>
+        </div>
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+      </div>
     </form>
 
     <section id="result" class="result">
@@ -206,6 +292,17 @@ def page_html() -> str:
     const player = document.getElementById("player");
     const download = document.getElementById("download");
     const envStatus = document.getElementById("envStatus");
+    const progress = document.getElementById("progress");
+    const progressStep = document.getElementById("progressStep");
+    const progressTime = document.getElementById("progressTime");
+    const progressBar = document.getElementById("progressBar");
+    let progressPoller = null;
+
+    function formatDuration(seconds) {
+      const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const secs = Math.floor(seconds % 60).toString().padStart(2, "0");
+      return `${mins}:${secs}`;
+    }
 
     function friendlyMissing(item) {
       if (item.includes("seed-vc") || item.includes("inference.py")) {
@@ -224,11 +321,43 @@ def page_html() -> str:
       }
     }
 
+    async function refreshProgress() {
+      const response = await fetch("/api/progress");
+      const data = await response.json();
+      progress.classList.add("visible");
+      progressStep.textContent = `${data.step} · ${data.percent}%`;
+      progressTime.textContent = `用时 ${formatDuration(data.elapsed_seconds || 0)}`;
+      progressBar.style.width = `${Math.max(0, Math.min(100, data.percent || 0))}%`;
+      return data;
+    }
+
+    function startProgressPolling() {
+      progress.classList.add("visible");
+      progressStep.textContent = "准备开始 · 0%";
+      progressTime.textContent = "用时 00:00";
+      progressBar.style.width = "0%";
+      if (progressPoller) {
+        clearInterval(progressPoller);
+      }
+      progressPoller = setInterval(() => {
+        refreshProgress().catch(() => {});
+      }, 1000);
+    }
+
+    function stopProgressPolling() {
+      if (progressPoller) {
+        clearInterval(progressPoller);
+        progressPoller = null;
+      }
+      refreshProgress().catch(() => {});
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       result.classList.remove("visible");
       message.className = "message";
       message.textContent = "生成中...";
+      startProgressPolling();
       submit.disabled = true;
       const body = new FormData(form);
       try {
@@ -244,11 +373,14 @@ def page_html() -> str:
         result.classList.add("visible");
         message.className = data.mode === "test" ? "message warn" : "message";
         message.textContent = data.message || "生成完成";
+        progressStep.textContent = `生成完成 · 100%`;
+        progressBar.style.width = "100%";
       } catch (error) {
         message.className = "message error";
         message.textContent = error.message;
       } finally {
         submit.disabled = false;
+        stopProgressPolling();
       }
     });
 
@@ -271,6 +403,9 @@ class AppHandler(BaseHTTPRequestHandler):
             report = check_environment(self.seed_vc_dir)
             self.send_json({"ready": report.ready, "missing": report.missing, "text": report.to_text()})
             return
+        if self.path == "/api/progress":
+            self.send_json(PROGRESS.snapshot())
+            return
         if self.path.startswith("/download/"):
             self.send_file(OUTPUT_DIR / safe_filename(self.path.removeprefix("/download/")))
             return
@@ -281,7 +416,9 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
+            PROGRESS.reset("接收上传文件", 1, "running")
             files = self.read_uploads()
+            PROGRESS.update("检查运行环境", 3)
             report = check_environment(self.seed_vc_dir)
             if report.ready:
                 final_mix = run_demo(
@@ -291,8 +428,10 @@ class AppHandler(BaseHTTPRequestHandler):
                         seed_vc_dir=self.seed_vc_dir,
                         work_dir=ROOT / "data" / "processed" / "web",
                         output_dir=OUTPUT_DIR,
-                    )
+                    ),
+                    progress=lambda step, percent: PROGRESS.update(step, percent),
                 )
+                PROGRESS.update("生成完成", 100, "completed")
                 self.send_json(
                     {
                         "download_url": f"/download/{final_mix.name}",
@@ -302,7 +441,9 @@ class AppHandler(BaseHTTPRequestHandler):
                     }
                 )
             else:
+                PROGRESS.update("生成测试结果", 50)
                 test_output = create_test_result(OUTPUT_DIR / "test-result.wav")
+                PROGRESS.update("测试生成完成", 100, "completed")
                 self.send_json(
                     {
                         "download_url": f"/download/{test_output.name}",
@@ -313,6 +454,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     }
                 )
         except Exception as exc:
+            PROGRESS.fail(str(exc))
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
     def read_uploads(self) -> Dict[str, Path]:

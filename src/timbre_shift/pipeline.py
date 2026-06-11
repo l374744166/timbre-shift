@@ -5,12 +5,14 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import Callable, List, Optional
 
 from .audio import mix_audio, normalize_audio
 from .commands import require_binary
 from .demucs import separate_vocals
 from .seed_vc import convert_singing_voice
+
+ProgressCallback = Callable[[str, int], None]
 
 
 @dataclass(frozen=True)
@@ -77,16 +79,24 @@ def validate_inputs(options: PipelineOptions) -> None:
         raise FileNotFoundError(f"Seed-VC inference.py not found in: {options.seed_vc_dir}")
 
 
-def run_demo(options: PipelineOptions) -> Path:
+def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = None) -> Path:
+    def update(step: str, percent: int) -> None:
+        if progress:
+            progress(step, percent)
+
+    update("检查输入文件", 3)
     validate_inputs(options)
 
     prepared_dir = options.work_dir / "prepared"
     separated_dir = options.work_dir / "separated"
     converted_dir = options.work_dir / "converted"
 
+    update("处理声音样本", 8)
     prepared_voice = normalize_audio(options.voice, prepared_dir / "target_voice.wav")
+    update("处理歌曲文件", 15)
     prepared_song = normalize_audio(options.song, prepared_dir / "song.wav")
 
+    update("分离人声和伴奏", 30)
     separation = separate_vocals(
         prepared_song,
         output_dir=separated_dir,
@@ -95,6 +105,7 @@ def run_demo(options: PipelineOptions) -> Path:
     if not separation.vocals.exists() or not separation.backing.exists():
         raise FileNotFoundError(f"Demucs output not found under {separated_dir}")
 
+    update("转换为目标音色", 70)
     converted_vocal = convert_singing_voice(
         seed_vc_dir=options.seed_vc_dir,
         source_vocal=separation.vocals,
@@ -107,6 +118,7 @@ def run_demo(options: PipelineOptions) -> Path:
         fp16=options.fp16,
     )
 
+    update("混音导出", 92)
     return mix_audio(
         converted_vocal=converted_vocal,
         backing_track=separation.backing,
