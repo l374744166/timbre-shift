@@ -3,9 +3,21 @@ name = "timbre-shift"
 version = "0.1.0"
 description = "Voice cloning and song voice conversion experiments."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = []
+
+[project.scripts]
+timbre-shift = "timbre_shift.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

@@ -20,6 +20,7 @@ models/checkpoints/*
 models/pretrained/*
 outputs/*
 logs/*
+vendor/seed-vc/
 
 # Keep directory placeholders
 !**/.gitkeep
@@ -28,4 +29,3 @@ logs/*
 .DS_Store
 .idea/
 .vscode/
-

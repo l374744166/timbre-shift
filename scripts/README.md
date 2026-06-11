@@ -1,9 +1,12 @@
 # Scripts
 
-Planned command-line tools:
+The first local demo is exposed through the package CLI:
 
-- `prepare_audio`: clean, normalize, and segment target voice data
-- `separate_vocals`: extract vocal stems from source songs
-- `train_voice`: train or fine-tune a target voice model
-- `convert_song`: convert a source vocal to the target timbre
+```bash
+timbre-shift check
+timbre-shift demo --voice data/reference_voice/my_ref.wav --song data/songs/song.wav
+```
+
+The CLI lives in `src/timbre_shift` so it can be tested and reused by a future
+API backend.
 

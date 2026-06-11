@@ -13,7 +13,24 @@ paths:
   outputs: outputs
   checkpoints: models/checkpoints
   pretrained: models/pretrained
+  seed_vc_repo: vendor/seed-vc
 
 ethics:
   require_voice_owner_consent: true
 
+demucs:
+  model: htdemucs_ft
+
+seed_vc:
+  diffusion_steps: 40
+  length_adjust: 1.0
+  inference_cfg_rate: 0.7
+  f0_condition: true
+  auto_f0_adjust: false
+  semi_tone_shift: 0
+  fp16: true
+
+mix:
+  vocal_volume: 1.0
+  backing_volume: 0.9
+  output_limiter: 0.95
