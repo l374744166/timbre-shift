@@ -1,0 +1,19 @@
+project:
+  name: timbre-shift
+
+audio:
+  sample_rate: 44100
+  segment_seconds: 10
+
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+  reference_voice: data/reference_voice
+  songs: data/songs
+  outputs: outputs
+  checkpoints: models/checkpoints
+  pretrained: models/pretrained
+
+ethics:
+  require_voice_owner_consent: true
+
