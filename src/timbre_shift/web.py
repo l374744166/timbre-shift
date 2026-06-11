@@ -15,6 +15,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 from .pipeline import PipelineOptions, check_environment, run_demo
 
@@ -387,6 +388,7 @@ def page_html() -> str:
         }
         const url = data.download_url + "?t=" + Date.now();
         player.src = url;
+        player.load();
         download.href = url;
         download.download = data.filename || "final.wav";
         result.classList.add("visible");
@@ -415,18 +417,26 @@ class AppHandler(BaseHTTPRequestHandler):
     seed_vc_dir: Path = Path("vendor/seed-vc")
 
     def do_GET(self) -> None:
-        if self.path == "/" or self.path.startswith("/?"):
+        request_path = urlparse(self.path).path
+        if request_path == "/":
             self.send_html(page_html())
             return
-        if self.path == "/api/check":
+        if request_path == "/api/check":
             report = check_environment(self.seed_vc_dir)
             self.send_json({"ready": report.ready, "missing": report.missing, "text": report.to_text()})
             return
-        if self.path == "/api/progress":
+        if request_path == "/api/progress":
             self.send_json(PROGRESS.snapshot())
             return
-        if self.path.startswith("/download/"):
-            self.send_file(OUTPUT_DIR / safe_filename(self.path.removeprefix("/download/")))
+        if request_path.startswith("/download/"):
+            self.send_file(OUTPUT_DIR / safe_filename(request_path.removeprefix("/download/")))
+            return
+        self.send_error(HTTPStatus.NOT_FOUND)
+
+    def do_HEAD(self) -> None:
+        request_path = urlparse(self.path).path
+        if request_path.startswith("/download/"):
+            self.send_file(OUTPUT_DIR / safe_filename(request_path.removeprefix("/download/")), head_only=True)
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -530,18 +540,46 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def send_file(self, path: Path) -> None:
+    def send_file(self, path: Path, head_only: bool = False) -> None:
         if not path.exists():
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        data = path.read_bytes()
-        self.send_response(HTTPStatus.OK)
+        file_size = path.stat().st_size
+        range_header = self.headers.get("Range", "")
+        start = 0
+        end = file_size - 1
+        status = HTTPStatus.OK
+
+        if range_header.startswith("bytes="):
+            range_value = range_header.removeprefix("bytes=").split(",", 1)[0]
+            start_text, _, end_text = range_value.partition("-")
+            try:
+                if start_text:
+                    start = int(start_text)
+                if end_text:
+                    end = int(end_text)
+                end = min(end, file_size - 1)
+                if start > end:
+                    raise ValueError
+                status = HTTPStatus.PARTIAL_CONTENT
+            except ValueError:
+                self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                return
+
+        content_length = end - start + 1
+        self.send_response(status)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Disposition", f'attachment; filename="{html.escape(path.name)}"')
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(content_length))
+        self.send_header("Accept-Ranges", "bytes")
+        if status == HTTPStatus.PARTIAL_CONTENT:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         self.end_headers()
-        self.wfile.write(data)
+        if not head_only:
+            with path.open("rb") as data:
+                data.seek(start)
+                self.wfile.write(data.read(content_length))
 
     def log_message(self, format: str, *args: object) -> None:
         print("%s - %s" % (self.address_string(), format % args))
