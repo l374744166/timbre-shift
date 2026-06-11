@@ -25,6 +25,7 @@ def run_command(command: Iterable[str], cwd: Optional[Path] = None) -> None:
         env.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
     except Exception:
         pass
+    env.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
     subprocess.run(list(command), cwd=str(cwd) if cwd else None, env=env, check=True)
 
 
