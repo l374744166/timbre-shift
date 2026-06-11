@@ -44,6 +44,7 @@ class PipelineOptions:
     inference_cfg_rate: float = 0.7
     semi_tone_shift: int = 0
     fp16: bool = False
+    clip_seconds: Optional[int] = None
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
@@ -91,10 +92,19 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
     separated_dir = options.work_dir / "separated"
     converted_dir = options.work_dir / "converted"
 
-    update("处理声音样本", 8)
-    prepared_voice = normalize_audio(options.voice, prepared_dir / "target_voice.wav")
-    update("处理歌曲文件", 15)
-    prepared_song = normalize_audio(options.song, prepared_dir / "song.wav")
+    clip_label = f"{options.clip_seconds}秒试听" if options.clip_seconds else "完整音频"
+    update(f"处理声音样本（{clip_label}）", 8)
+    prepared_voice = normalize_audio(
+        options.voice,
+        prepared_dir / "target_voice.wav",
+        duration_seconds=options.clip_seconds,
+    )
+    update(f"处理歌曲文件（{clip_label}）", 15)
+    prepared_song = normalize_audio(
+        options.song,
+        prepared_dir / "song.wav",
+        duration_seconds=options.clip_seconds,
+    )
 
     update("分离人声和伴奏", 30)
     separation = separate_vocals(

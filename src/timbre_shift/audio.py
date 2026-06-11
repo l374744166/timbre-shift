@@ -7,23 +7,29 @@ from pathlib import Path
 from .commands import as_strs, run_command
 
 
-def normalize_audio(source: Path, target: Path, sample_rate: int = 44100) -> Path:
+def normalize_audio(
+    source: Path,
+    target: Path,
+    sample_rate: int = 44100,
+    duration_seconds: int | None = None,
+) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        source,
+        "-ac",
+        1,
+        "-ar",
+        sample_rate,
+        "-vn",
+    ]
+    if duration_seconds:
+        command.extend(["-t", duration_seconds])
+    command.append(target)
     run_command(
-        as_strs(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                source,
-                "-ac",
-                1,
-                "-ar",
-                sample_rate,
-                "-vn",
-                target,
-            ]
-        )
+        as_strs(command)
     )
     return target
 

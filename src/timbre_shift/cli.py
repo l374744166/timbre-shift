@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--inference-cfg-rate", type=float, default=0.7)
     demo.add_argument("--semi-tone-shift", type=int, default=0)
     demo.add_argument("--fp16", action=argparse.BooleanOptionalAction, default=False)
+    demo.add_argument("--clip-seconds", type=int, default=None, help="Only process the first N seconds.")
 
     return parser
 
@@ -67,6 +68,7 @@ def main() -> int:
             inference_cfg_rate=args.inference_cfg_rate,
             semi_tone_shift=args.semi_tone_shift,
             fp16=args.fp16,
+            clip_seconds=args.clip_seconds,
         )
         final_mix = run_demo(options)
         print("Final mix:", final_mix)

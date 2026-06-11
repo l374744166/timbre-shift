@@ -14,7 +14,7 @@ import wave
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 from .pipeline import PipelineOptions, check_environment, run_demo
 
@@ -157,6 +157,21 @@ def page_html() -> str:
       background: #fff;
       font-size: 14px;
     }
+    .option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 0 2px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 650;
+    }
+    .option input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
     .actions {
       display: flex;
       align-items: center;
@@ -263,6 +278,10 @@ def page_html() -> str:
         <label for="song">歌曲文件</label>
         <input id="song" name="song" type="file" accept="audio/*" required>
       </div>
+      <label class="option" for="preview">
+        <input id="preview" name="preview" type="checkbox" checked>
+        <span>30秒试听</span>
+      </label>
       <div class="actions">
         <button id="submit" type="submit">生成</button>
         <div id="message" class="message"></div>
@@ -417,7 +436,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         try:
             PROGRESS.reset("接收上传文件", 1, "running")
-            files = self.read_uploads()
+            files, clip_seconds = self.read_uploads()
             PROGRESS.update("检查运行环境", 3)
             report = check_environment(self.seed_vc_dir)
             if report.ready:
@@ -428,16 +447,19 @@ class AppHandler(BaseHTTPRequestHandler):
                         seed_vc_dir=self.seed_vc_dir,
                         work_dir=ROOT / "data" / "processed" / "web",
                         output_dir=OUTPUT_DIR,
+                        clip_seconds=clip_seconds,
                     ),
                     progress=lambda step, percent: PROGRESS.update(step, percent),
                 )
                 PROGRESS.update("生成完成", 100, "completed")
+                message = "30秒试听生成完成" if clip_seconds else "生成完成"
                 self.send_json(
                     {
                         "download_url": f"/download/{final_mix.name}",
                         "filename": final_mix.name,
                         "mode": "real",
-                        "message": "生成完成",
+                        "message": message,
+                        "clip_seconds": clip_seconds,
                     }
                 )
             else:
@@ -457,7 +479,7 @@ class AppHandler(BaseHTTPRequestHandler):
             PROGRESS.fail(str(exc))
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
-    def read_uploads(self) -> Dict[str, Path]:
+    def read_uploads(self) -> Tuple[Dict[str, Path], Optional[int]]:
         content_type = self.headers.get("content-type", "")
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("请上传音频文件")
@@ -488,7 +510,9 @@ class AppHandler(BaseHTTPRequestHandler):
                         break
                     output.write(chunk)
             saved[field] = path
-        return saved
+        preview_value = form.getfirst("preview", "")
+        clip_seconds = 30 if preview_value else None
+        return saved, clip_seconds
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")
