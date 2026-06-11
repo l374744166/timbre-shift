@@ -69,3 +69,9 @@ timbre-shift demo \
 ```
 
 The final mix is written to `outputs/final.wav`.
+
+On recent `torchaudio` versions, Demucs also needs `torchcodec` to save stems:
+
+```bash
+python -m pip install demucs torchcodec
+```
