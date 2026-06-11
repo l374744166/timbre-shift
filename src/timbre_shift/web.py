@@ -5,13 +5,15 @@ from __future__ import annotations
 import cgi
 import html
 import json
+import math
 import mimetypes
 import re
 import time
+import wave
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 from .pipeline import PipelineOptions, check_environment, run_demo
 
@@ -240,7 +242,8 @@ def page_html() -> str:
         download.href = url;
         download.download = data.filename || "final.wav";
         result.classList.add("visible");
-        message.textContent = "生成完成";
+        message.className = data.mode === "test" ? "message warn" : "message";
+        message.textContent = data.message || "生成完成";
       } catch (error) {
         message.className = "message error";
         message.textContent = error.message;
@@ -269,7 +272,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json({"ready": report.ready, "missing": report.missing, "text": report.to_text()})
             return
         if self.path.startswith("/download/"):
-            self.send_file(OUTPUT_DIR / "final.wav")
+            self.send_file(OUTPUT_DIR / safe_filename(self.path.removeprefix("/download/")))
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -279,16 +282,36 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         try:
             files = self.read_uploads()
-            final_mix = run_demo(
-                PipelineOptions(
-                    voice=files["voice"],
-                    song=files["song"],
-                    seed_vc_dir=self.seed_vc_dir,
-                    work_dir=ROOT / "data" / "processed" / "web",
-                    output_dir=OUTPUT_DIR,
+            report = check_environment(self.seed_vc_dir)
+            if report.ready:
+                final_mix = run_demo(
+                    PipelineOptions(
+                        voice=files["voice"],
+                        song=files["song"],
+                        seed_vc_dir=self.seed_vc_dir,
+                        work_dir=ROOT / "data" / "processed" / "web",
+                        output_dir=OUTPUT_DIR,
+                    )
                 )
-            )
-            self.send_json({"download_url": "/download/final.wav", "filename": final_mix.name})
+                self.send_json(
+                    {
+                        "download_url": f"/download/{final_mix.name}",
+                        "filename": final_mix.name,
+                        "mode": "real",
+                        "message": "生成完成",
+                    }
+                )
+            else:
+                test_output = create_test_result(OUTPUT_DIR / "test-result.wav")
+                self.send_json(
+                    {
+                        "download_url": f"/download/{test_output.name}",
+                        "filename": test_output.name,
+                        "mode": "test",
+                        "message": "测试生成完成；真实换声还缺少 ffmpeg、Demucs 或 Seed-VC",
+                        "missing": report.missing,
+                    }
+                )
         except Exception as exc:
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
@@ -363,3 +386,22 @@ def run_web_app(host: str, port: int, seed_vc_dir: Path) -> None:
     server = ThreadingHTTPServer((host, port), AppHandler)
     print(f"Timbre Shift web app: http://{host}:{port}")
     server.serve_forever()
+
+
+def create_test_result(path: Path) -> Path:
+    """Create a short WAV so the upload/download flow is immediately testable."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sample_rate = 44100
+    duration_seconds = 3
+    frequency = 440.0
+    amplitude = 12000
+    total_frames = sample_rate * duration_seconds
+
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        for index in range(total_frames):
+            sample = int(amplitude * math.sin(2 * math.pi * frequency * index / sample_rate))
+            wav.writeframesraw(sample.to_bytes(2, byteorder="little", signed=True))
+    return path
