@@ -18,6 +18,11 @@ def build_parser() -> argparse.ArgumentParser:
     check = subparsers.add_parser("check", help="Check local tool availability.")
     check.add_argument("--seed-vc-dir", default="vendor/seed-vc")
 
+    web = subparsers.add_parser("web", help="Start the local upload demo web app.")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--seed-vc-dir", default="vendor/seed-vc")
+
     demo = subparsers.add_parser("demo", help="Run separation, conversion, and mixing.")
     demo.add_argument("--voice", required=True, help="Target voice reference audio.")
     demo.add_argument("--song", required=True, help="Source song audio.")
@@ -42,6 +47,12 @@ def main() -> int:
         report = check_environment(Path(args.seed_vc_dir))
         print(report.to_text())
         return 0 if report.ready else 1
+
+    if args.command == "web":
+        from .web import run_web_app
+
+        run_web_app(host=args.host, port=args.port, seed_vc_dir=Path(args.seed_vc_dir))
+        return 0
 
     if args.command == "demo":
         options = PipelineOptions(

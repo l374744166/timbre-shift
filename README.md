@@ -53,6 +53,12 @@ Check your local environment:
 timbre-shift check --seed-vc-dir vendor/seed-vc
 ```
 
+Start the local upload page:
+
+```bash
+timbre-shift web --seed-vc-dir vendor/seed-vc
+```
+
 Run the demo after installing `ffmpeg`, `demucs`, and Seed-VC separately:
 
 ```bash
