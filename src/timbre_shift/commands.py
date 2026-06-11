@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import os
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -16,7 +17,15 @@ def require_binary(name: str) -> Optional[str]:
 def run_command(command: Iterable[str], cwd: Optional[Path] = None) -> None:
     printable = " ".join(str(part) for part in command)
     print("$", printable)
-    subprocess.run(list(command), cwd=str(cwd) if cwd else None, check=True)
+    env = os.environ.copy()
+    try:
+        import certifi
+
+        env.setdefault("SSL_CERT_FILE", certifi.where())
+        env.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+    except Exception:
+        pass
+    subprocess.run(list(command), cwd=str(cwd) if cwd else None, env=env, check=True)
 
 
 def bool_arg(value: bool) -> str:
