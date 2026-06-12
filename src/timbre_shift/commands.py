@@ -23,7 +23,6 @@ def build_env(extra_env: Mapping[str, str] | None = None) -> dict[str, str]:
         env.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
     except Exception:
         pass
-    env.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
     if extra_env:
         for key, value in extra_env.items():
             if value is not None:
