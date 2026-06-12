@@ -58,7 +58,7 @@ class LibraryTests(unittest.TestCase):
             self.assertEqual([profile.id for profile in targets], [allowed.id])
             self.assertNotIn(blocked.id, [profile.id for profile in targets])
 
-    def test_save_voice_to_library_reuses_same_hash(self):
+    def test_save_voice_to_library_allows_rebuilding_same_audio(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             db_path = root / "library.db"
@@ -71,8 +71,8 @@ class LibraryTests(unittest.TestCase):
                 first = save_voice_to_library(audio, "One", library_dir=root / "library", db_path=db_path)
                 second = save_voice_to_library(audio, "Two", library_dir=root / "library", db_path=db_path)
 
-            self.assertEqual(first.id, second.id)
-            self.assertEqual(len(list_voice_profiles(db_path=db_path)), 1)
+            self.assertNotEqual(first.id, second.id)
+            self.assertEqual(len(list_voice_profiles(db_path=db_path)), 2)
 
     def test_save_song_and_update_stems(self):
         with TemporaryDirectory() as tmp:

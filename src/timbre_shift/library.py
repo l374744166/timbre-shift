@@ -342,9 +342,6 @@ def save_voice_to_library(
 ) -> VoiceProfile:
     init_library(db_path)
     file_hash = sha256_file(input_audio)
-    existing = _existing_voice_by_hash(db_path, file_hash)
-    if existing:
-        return existing
 
     can_target = bool(allowed_as_target and rights_status in {"own_voice", "authorized_voice"})
     if not can_target and rights_status in {"own_voice", "authorized_voice"}:
