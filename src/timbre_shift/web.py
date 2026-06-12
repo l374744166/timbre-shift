@@ -888,6 +888,11 @@ class AppHandler(BaseHTTPRequestHandler):
                         "missing": report.missing,
                     }
                 )
+        except BrokenPipeError as exc:
+            if PROGRESS.snapshot().get("status") == "completed":
+                return
+            PROGRESS.fail(str(exc))
+            write_error_metrics(OUTPUT_DIR / "metrics.json", str(exc))
         except Exception as exc:
             PROGRESS.fail(str(exc))
             write_error_metrics(OUTPUT_DIR / "metrics.json", str(exc))
