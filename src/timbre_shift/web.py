@@ -468,7 +468,7 @@ def page_html() -> str:
             </label>
             <label class="option">
               <input type="radio" name="source_type" value="clean_vocal">
-              <span><strong>干净人声</strong><span>已经提前分离好，跳过歌曲分离</span></span>
+              <span><strong>已分离人声</strong><span>文件里没有伴奏，输出也不会混伴奏</span></span>
             </label>
           </div>
         </div>

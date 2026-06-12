@@ -325,7 +325,7 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
     metrics["song_duration_seconds"] = probe_duration(prepared_song)
 
     if skip_separation:
-        update("使用干净人声，跳过分离", 30)
+        update("使用已分离人声，跳过歌曲分离", 30)
         source_vocal = prepared_song
         backing_track = None
         cache_label = "跳过分离"
@@ -450,7 +450,7 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         metrics["restore_timeline_seconds"] = time.perf_counter() - step_start
 
     if backing_track is None:
-        update("导出干净人声", 92)
+        update("导出已换声人声", 92)
         final_output = options.output_dir / "final.wav"
         final_output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(converted_vocal, final_output)
