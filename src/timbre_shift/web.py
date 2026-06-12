@@ -15,7 +15,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from .demucs import separate_vocals
 from .library import (
@@ -85,6 +85,19 @@ def safe_filename(name: str) -> str:
     stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(path_name).stem).strip("-")
     suffix = re.sub(r"[^A-Za-z0-9.]+", "", Path(path_name).suffix)
     return f"{stem or 'upload'}{suffix or '.wav'}"
+
+
+def safe_download_filename(name: str | None, fallback: str) -> str:
+    fallback_path = Path(fallback)
+    fallback_suffix = fallback_path.suffix or ".mp3"
+    raw_name = (name or fallback_path.name).strip()
+    cleaned = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", raw_name)
+    cleaned = re.sub(r"\s+", " ", Path(cleaned).name).strip(" .")
+    if not cleaned:
+        cleaned = fallback_path.name
+    if not Path(cleaned).suffix:
+        cleaned = f"{cleaned}{fallback_suffix}"
+    return cleaned
 
 
 def page_html() -> str:
@@ -704,7 +717,11 @@ def page_html() -> str:
         event.preventDefault();
         return;
       }
-      download.download = cleanDownloadName(name, currentName);
+      const cleanedName = cleanDownloadName(name, currentName);
+      const url = new URL(download.href);
+      url.searchParams.set("name", cleanedName);
+      download.href = url.toString();
+      download.download = cleanedName;
     });
 
     saveVoiceButton.addEventListener("click", async () => {
@@ -754,7 +771,8 @@ class AppHandler(BaseHTTPRequestHandler):
     seed_vc_dir: Path = Path("vendor/seed-vc")
 
     def do_GET(self) -> None:
-        request_path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        request_path = parsed.path
         if request_path == "/":
             self.send_html(page_html())
             return
@@ -766,14 +784,24 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(PROGRESS.snapshot())
             return
         if request_path.startswith("/download/"):
-            self.send_file(OUTPUT_DIR / safe_filename(request_path.removeprefix("/download/")))
+            download_name = parse_qs(parsed.query).get("name", [None])[0]
+            self.send_file(
+                OUTPUT_DIR / safe_filename(request_path.removeprefix("/download/")),
+                download_name=download_name,
+            )
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_HEAD(self) -> None:
-        request_path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        request_path = parsed.path
         if request_path.startswith("/download/"):
-            self.send_file(OUTPUT_DIR / safe_filename(request_path.removeprefix("/download/")), head_only=True)
+            download_name = parse_qs(parsed.query).get("name", [None])[0]
+            self.send_file(
+                OUTPUT_DIR / safe_filename(request_path.removeprefix("/download/")),
+                head_only=True,
+                download_name=download_name,
+            )
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -1012,7 +1040,7 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def send_file(self, path: Path, head_only: bool = False) -> None:
+    def send_file(self, path: Path, head_only: bool = False, download_name: str | None = None) -> None:
         if not path.exists():
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -1040,9 +1068,12 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
 
         content_length = end - start + 1
+        filename = safe_download_filename(download_name, path.name)
+        ascii_filename = safe_filename(filename)
+        disposition = f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{quote(filename, safe='')}"
         self.send_response(status)
         self.send_header("Content-Type", mime)
-        self.send_header("Content-Disposition", f'attachment; filename="{html.escape(path.name)}"')
+        self.send_header("Content-Disposition", disposition)
         self.send_header("Content-Length", str(content_length))
         self.send_header("Accept-Ranges", "bytes")
         if status == HTTPStatus.PARTIAL_CONTENT:
