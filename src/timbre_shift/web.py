@@ -23,6 +23,7 @@ from .library import (
     init_library,
     list_songs,
     list_voice_profiles,
+    save_voice_to_library,
 )
 from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
 
@@ -271,6 +272,15 @@ def page_html() -> str:
       align-items: center;
       justify-content: center;
     }
+    button.secondary {
+      border-color: var(--line);
+      background: #fff;
+      color: var(--accent);
+    }
+    button.secondary:hover {
+      border-color: var(--accent);
+      background: #eef7f3;
+    }
     button:hover, .download:hover { background: var(--accent-strong); }
     button:disabled {
       opacity: 0.65;
@@ -390,17 +400,14 @@ def page_html() -> str:
           <label for="voice">新声音样本</label>
           <input id="voice" name="voice" type="file" accept="audio/*">
         </div>
-        <details id="voiceAdvanced">
-          <summary>保存到音色库</summary>
-          <div class="advanced-grid">
-            <div class="field">
-              <label for="voiceName">音色名称</label>
-              <input id="voiceName" name="voice_name" type="text" placeholder="例如：我的声音">
-            </div>
-            <label class="check"><input id="saveVoice" name="save_voice" type="checkbox" value="1"> 保存这个声音，以后直接从下拉框选择</label>
-            <label class="check"><input id="rightsConfirmed" name="rights_confirmed" type="checkbox" value="1"> 我确认这是我自己的声音，或我已获得声音所有者授权</label>
-          </div>
-        </details>
+        <div class="field" id="voiceNameField">
+          <label for="voiceName">音色名称</label>
+          <input id="voiceName" name="voice_name" type="text" placeholder="例如：我的声音">
+        </div>
+        <div class="actions" id="voiceSaveActions">
+          <button class="secondary" id="saveVoiceButton" type="button">保存音色</button>
+          <div id="voiceSaveMessage" class="message"></div>
+        </div>
       </section>
 
       <section class="section">
@@ -492,7 +499,11 @@ def page_html() -> str:
     const progressBar = document.getElementById("progressBar");
     const voiceProfile = document.getElementById("voiceProfile");
     const voiceUploadField = document.getElementById("voiceUploadField");
-    const voiceAdvanced = document.getElementById("voiceAdvanced");
+    const voiceNameField = document.getElementById("voiceNameField");
+    const voiceName = document.getElementById("voiceName");
+    const saveVoiceButton = document.getElementById("saveVoiceButton");
+    const voiceSaveActions = document.getElementById("voiceSaveActions");
+    const voiceSaveMessage = document.getElementById("voiceSaveMessage");
     const voiceHint = document.getElementById("voiceHint");
     const songLibrary = document.getElementById("songLibrary");
     const songUploadField = document.getElementById("songUploadField");
@@ -538,7 +549,8 @@ def page_html() -> str:
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
       voiceUploadField.style.display = usingSavedVoice ? "none" : "grid";
-      voiceAdvanced.style.display = usingSavedVoice ? "none" : "block";
+      voiceNameField.style.display = usingSavedVoice ? "none" : "grid";
+      voiceSaveActions.style.display = usingSavedVoice ? "none" : "flex";
       voiceHint.textContent = usingSavedVoice ? "正在使用已保存音色" : "选择已有音色，或上传新声音";
 
       const usingSavedSong = Boolean(songLibrary.value);
@@ -641,6 +653,37 @@ def page_html() -> str:
       }
     });
 
+    saveVoiceButton.addEventListener("click", async () => {
+      voiceSaveMessage.className = "message";
+      voiceSaveMessage.textContent = "保存中...";
+      saveVoiceButton.disabled = true;
+      try {
+        if (!document.getElementById("voice").files.length) {
+          throw new Error("先选择一个声音样本");
+        }
+        const body = new FormData();
+        body.append("voice", document.getElementById("voice").files[0]);
+        body.append("voice_name", voiceName.value || document.getElementById("voice").files[0].name);
+        const response = await fetch("/api/save-voice", { method: "POST", body });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "保存失败");
+        }
+        const option = document.createElement("option");
+        option.value = data.id;
+        option.textContent = data.name;
+        option.selected = true;
+        voiceProfile.appendChild(option);
+        voiceSaveMessage.textContent = "已保存";
+        syncLibraryControls();
+      } catch (error) {
+        voiceSaveMessage.className = "message error";
+        voiceSaveMessage.textContent = error.message;
+      } finally {
+        saveVoiceButton.disabled = false;
+      }
+    });
+
     refreshEnv().catch(() => {
       envStatus.textContent = "环境检查失败";
     });
@@ -681,6 +724,30 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if self.path == "/api/save-voice":
+            try:
+                voice_path, voice_name = self.read_voice_library_upload()
+                profile = save_voice_to_library(
+                    input_audio=voice_path,
+                    name=voice_name,
+                    description=None,
+                    source_type="upload_voice",
+                    rights_status="own_voice",
+                    allowed_as_target=True,
+                    library_dir=DEFAULT_LIBRARY_DIR,
+                    db_path=DEFAULT_DB_PATH,
+                )
+                self.send_json(
+                    {
+                        "id": profile.id,
+                        "name": profile.name,
+                        "message": "音色已保存",
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
         if self.path != "/api/generate":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -797,17 +864,50 @@ class AppHandler(BaseHTTPRequestHandler):
             "skip_separation": skip_separation,
             "voice_profile_id": form.getfirst("voice_profile_id", ""),
             "song_id": form.getfirst("song_id", ""),
-            "save_voice": form.getfirst("save_voice", "") == "1",
+            "save_voice": False,
             "save_song": form.getfirst("save_song", "") == "1",
             "voice_name": form.getfirst("voice_name", ""),
             "song_title": form.getfirst("song_title", ""),
-            "rights_confirmed": form.getfirst("rights_confirmed", "") == "1",
+            "rights_confirmed": True,
         }
         if not fields["voice_profile_id"] and "voice" not in saved:
             raise ValueError("请选择本地音色，或上传一个新声音样本")
         if not fields["song_id"] and "song" not in saved:
             raise ValueError("请选择本地歌曲，或上传一个新歌曲文件")
         return saved, fields
+
+    def read_voice_library_upload(self) -> Tuple[Path, str]:
+        content_type = self.headers.get("content-type", "")
+        if not content_type.startswith("multipart/form-data"):
+            raise ValueError("请上传声音样本")
+
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+        )
+        item = form["voice"] if "voice" in form else None
+        if item is None or not getattr(item, "filename", ""):
+            raise ValueError("先选择一个声音样本")
+
+        timestamp = str(int(time.time()))
+        target_dir = UPLOAD_ROOT / timestamp
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = safe_filename(item.filename)
+        path = target_dir / f"voice-library-{filename}"
+        with path.open("wb") as output:
+            while True:
+                chunk = item.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+
+        raw_name = str(form.getfirst("voice_name", "")).strip()
+        voice_name = raw_name or Path(filename).stem or "我的声音"
+        return path, voice_name
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")
