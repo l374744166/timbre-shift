@@ -21,6 +21,7 @@ from .demucs import separate_vocals
 from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
+    archive_voice_profile,
     init_library,
     list_voice_profiles,
     save_voice_to_library,
@@ -313,6 +314,15 @@ def page_html() -> str:
       background: #fff;
       color: var(--accent);
     }
+    button.danger {
+      border-color: #d33f49;
+      background: #fff;
+      color: #b4232c;
+    }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
     button.secondary:hover {
       border-color: var(--accent);
       background: #eef7f3;
@@ -432,10 +442,13 @@ def page_html() -> str:
         </div>
         <div class="field">
           <label for="voiceProfile">已保存音色</label>
-          <select id="voiceProfile" name="voice_profile_id">
-            <option value="">上传新声音</option>
-            __VOICE_OPTIONS__
-          </select>
+          <div class="inline-fields">
+            <select id="voiceProfile" name="voice_profile_id">
+              <option value="">上传新声音</option>
+              __VOICE_OPTIONS__
+            </select>
+            <button class="danger" id="deleteVoiceButton" type="button">删除</button>
+          </div>
         </div>
         <div class="field" id="voiceUploadField">
           <label for="voice">上传声音</label>
@@ -552,6 +565,7 @@ def page_html() -> str:
     const voiceNameField = document.getElementById("voiceNameField");
     const voiceName = document.getElementById("voiceName");
     const saveVoiceButton = document.getElementById("saveVoiceButton");
+    const deleteVoiceButton = document.getElementById("deleteVoiceButton");
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
     const voiceHint = document.getElementById("voiceHint");
@@ -608,6 +622,7 @@ def page_html() -> str:
       voiceSourceField.style.display = usingSavedVoice ? "none" : "grid";
       voiceNameField.style.display = usingSavedVoice ? "none" : "grid";
       voiceSaveActions.style.display = usingSavedVoice ? "none" : "grid";
+      deleteVoiceButton.disabled = !usingSavedVoice;
       voiceHint.textContent = usingSavedVoice ? "正在使用已保存音色" : "选择已有音色，或上传新声音";
       songUploadField.style.display = "grid";
       songHint.textContent = "上传要换声的音频";
@@ -756,6 +771,35 @@ def page_html() -> str:
       }
     });
 
+    deleteVoiceButton.addEventListener("click", async () => {
+      const id = voiceProfile.value;
+      const selectedOption = voiceProfile.options[voiceProfile.selectedIndex];
+      const name = selectedOption ? selectedOption.textContent : "这个音色";
+      if (!id) return;
+      if (!window.confirm(`删除已保存音色「${name}」？`)) return;
+      deleteVoiceButton.disabled = true;
+      voiceSaveMessage.className = "message";
+      voiceSaveMessage.textContent = "删除中...";
+      try {
+        const body = new FormData();
+        body.append("voice_profile_id", id);
+        const response = await fetch("/api/delete-voice", { method: "POST", body });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "删除失败");
+        }
+        selectedOption.remove();
+        voiceProfile.value = "";
+        voiceSaveMessage.textContent = "已删除";
+        syncLibraryControls();
+      } catch (error) {
+        voiceSaveMessage.className = "message error";
+        voiceSaveMessage.textContent = error.message;
+      } finally {
+        syncLibraryControls();
+      }
+    });
+
     refreshEnv().catch(() => {
       envStatus.textContent = "环境检查失败";
     });
@@ -806,6 +850,18 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if self.path == "/api/delete-voice":
+            try:
+                fields = self.read_form_fields()
+                voice_id = str(fields.get("voice_profile_id", "")).strip()
+                if not voice_id:
+                    raise ValueError("请选择要删除的音色")
+                archive_voice_profile(voice_id, db_path=DEFAULT_DB_PATH)
+                self.send_json({"id": voice_id, "message": "音色已删除"})
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
         if self.path == "/api/save-voice":
             try:
                 voice_path, voice_name, voice_source_type = self.read_voice_library_upload()
@@ -987,6 +1043,20 @@ class AppHandler(BaseHTTPRequestHandler):
         if not fields["song_id"] and "song" not in saved:
             raise ValueError("请选择本地歌曲，或上传一个新歌曲文件")
         return saved, fields
+
+    def read_form_fields(self) -> Dict[str, object]:
+        content_type = self.headers.get("content-type", "")
+        if not content_type.startswith("multipart/form-data"):
+            raise ValueError("表单格式不正确")
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+        )
+        return {key: form.getfirst(key, "") for key in form.keys()}
 
     def read_voice_library_upload(self) -> Tuple[Path, str, str]:
         content_type = self.headers.get("content-type", "")
