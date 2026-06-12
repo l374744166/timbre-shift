@@ -17,11 +17,11 @@ from pathlib import Path
 from typing import Dict, Tuple
 from urllib.parse import urlparse
 
+from .demucs import separate_vocals
 from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
     init_library,
-    list_songs,
     list_voice_profiles,
     save_voice_to_library,
 )
@@ -91,10 +91,6 @@ def page_html() -> str:
     voice_options = "\n".join(
         f'<option value="{html.escape(profile.id)}">{html.escape(profile.name)}</option>'
         for profile in list_voice_profiles(only_allowed_targets=True, db_path=DEFAULT_DB_PATH)
-    )
-    song_options = "\n".join(
-        f'<option value="{html.escape(song.id)}">{html.escape(song.title)}</option>'
-        for song in list_songs(db_path=DEFAULT_DB_PATH)
     )
     body = """<!doctype html>
 <html lang="zh-CN">
@@ -242,20 +238,37 @@ def page_html() -> str:
       margin-top: 2px;
       accent-color: var(--accent);
     }
+    .radio-group {
+      display: grid;
+      gap: 8px;
+    }
     .option {
-      display: flex;
-      align-items: center;
+      display: grid;
+      grid-template-columns: auto 1fr;
       gap: 10px;
-      min-height: 44px;
-      padding: 0 2px;
+      min-height: 48px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
       color: var(--ink);
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 650;
+      line-height: 1.35;
+      cursor: pointer;
     }
     .option input {
       width: 18px;
       height: 18px;
+      margin: 1px 0 0;
       accent-color: var(--accent);
+    }
+    .option span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
     }
     .actions {
       display: flex;
@@ -410,6 +423,19 @@ def page_html() -> str:
           <label for="voice">上传声音</label>
           <input id="voice" name="voice" type="file" accept="audio/*">
         </div>
+        <div class="field" id="voiceSourceField">
+          <label>声音类型</label>
+          <div class="radio-group">
+            <label class="option">
+              <input type="radio" name="voice_source_type" value="clean_voice" checked>
+              <span><strong>干净声音</strong><span>已经是单独人声，保存最快</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="voice_source_type" value="mixed_voice">
+              <span><strong>带伴奏/混合声音</strong><span>先分离人声再保存，之后生成不用再分离音色</span></span>
+            </label>
+          </div>
+        </div>
         <div class="inline-fields" id="voiceSaveActions">
           <div class="field" id="voiceNameField">
             <label for="voiceName">名称</label>
@@ -433,24 +459,18 @@ def page_html() -> str:
           <summary>高级设置</summary>
           <div class="advanced-grid">
             <div class="field">
-              <label for="sourceType">源音频类型</label>
-              <select id="sourceType" name="source_type">
-                <option value="song" selected>完整歌曲：自动分离人声和伴奏</option>
-                <option value="clean_vocal">干净人声：跳过分离</option>
-              </select>
+              <label>源音频类型</label>
+              <div class="radio-group">
+                <label class="option">
+                  <input type="radio" name="source_type" value="song" checked>
+                  <span><strong>完整歌曲</strong><span>自动分离人声和伴奏</span></span>
+                </label>
+                <label class="option">
+                  <input type="radio" name="source_type" value="clean_vocal">
+                  <span><strong>干净人声</strong><span>已经提前分离好，跳过歌曲分离</span></span>
+                </label>
+              </div>
             </div>
-            <div class="field">
-              <label for="songLibrary">已保存歌曲</label>
-              <select id="songLibrary" name="song_id">
-                <option value="">不使用</option>
-                __SONG_OPTIONS__
-              </select>
-            </div>
-            <div class="field" id="songAdvanced">
-              <label for="songTitle">保存歌曲名称</label>
-              <input id="songTitle" name="song_title" type="text" placeholder="例如：安河桥">
-            </div>
-            <label class="check"><input id="saveSong" name="save_song" type="checkbox" value="1"> 保存歌曲和分离结果，下次换音色跳过重复分离</label>
           </div>
         </details>
       </section>
@@ -464,13 +484,25 @@ def page_html() -> str:
           <summary>生成模式</summary>
           <div class="advanced-grid">
             <div class="field">
-              <label for="mode">模式</label>
-              <select id="mode" name="mode">
-                <option value="m2max_hq_30" selected>默认整首：速度和质量平衡</option>
-                <option value="preview_auto_15_m2max">15秒试听：最快看效果</option>
-                <option value="m2max_hq_plus">高质量：更细一点</option>
-                <option value="m2max_offline_max">离线最高质量：最慢</option>
-              </select>
+              <label>模式</label>
+              <div class="radio-group">
+                <label class="option">
+                  <input type="radio" name="mode" value="m2max_hq_30" checked>
+                  <span><strong>默认整首</strong><span>速度和质量平衡</span></span>
+                </label>
+                <label class="option">
+                  <input type="radio" name="mode" value="preview_auto_15_m2max">
+                  <span><strong>15秒试听</strong><span>最快看效果</span></span>
+                </label>
+                <label class="option">
+                  <input type="radio" name="mode" value="m2max_hq_plus">
+                  <span><strong>高质量</strong><span>更细一点，会更慢</span></span>
+                </label>
+                <label class="option">
+                  <input type="radio" name="mode" value="m2max_offline_max">
+                  <span><strong>离线最高质量</strong><span>最慢，适合最终出片</span></span>
+                </label>
+              </div>
             </div>
           </div>
         </details>
@@ -521,17 +553,15 @@ def page_html() -> str:
     const progressBar = document.getElementById("progressBar");
     const voiceProfile = document.getElementById("voiceProfile");
     const voiceUploadField = document.getElementById("voiceUploadField");
+    const voiceSourceField = document.getElementById("voiceSourceField");
     const voiceNameField = document.getElementById("voiceNameField");
     const voiceName = document.getElementById("voiceName");
     const saveVoiceButton = document.getElementById("saveVoiceButton");
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
     const voiceHint = document.getElementById("voiceHint");
-    const songLibrary = document.getElementById("songLibrary");
     const songUploadField = document.getElementById("songUploadField");
-    const songAdvanced = document.getElementById("songAdvanced");
     const songHint = document.getElementById("songHint");
-    const sourceType = document.getElementById("sourceType");
     let progressPoller = null;
 
     function formatDuration(seconds) {
@@ -571,15 +601,12 @@ def page_html() -> str:
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
       voiceUploadField.style.display = usingSavedVoice ? "none" : "grid";
+      voiceSourceField.style.display = usingSavedVoice ? "none" : "grid";
       voiceNameField.style.display = usingSavedVoice ? "none" : "grid";
-      voiceSaveActions.style.display = usingSavedVoice ? "none" : "flex";
+      voiceSaveActions.style.display = usingSavedVoice ? "none" : "grid";
       voiceHint.textContent = usingSavedVoice ? "正在使用已保存音色" : "选择已有音色，或上传新声音";
-
-      const usingSavedSong = Boolean(songLibrary.value);
-      songUploadField.style.display = usingSavedSong ? "none" : "grid";
-      songAdvanced.style.display = usingSavedSong ? "none" : "block";
-      sourceType.disabled = usingSavedSong;
-      songHint.textContent = usingSavedSong ? "正在使用已保存歌曲" : "选择已有歌曲，或上传新歌曲";
+      songUploadField.style.display = "grid";
+      songHint.textContent = "上传要换声的音频";
     }
 
     async function refreshEnv() {
@@ -638,9 +665,9 @@ def page_html() -> str:
         stopProgressPolling();
         return;
       }
-      if (!body.get("song_id") && !document.getElementById("song").files.length) {
+      if (!document.getElementById("song").files.length) {
         message.className = "message error";
-        message.textContent = "请选择本地歌曲，或上传一个新歌曲文件";
+        message.textContent = "请上传一个歌曲文件";
         submit.disabled = false;
         stopProgressPolling();
         return;
@@ -686,6 +713,7 @@ def page_html() -> str:
         const body = new FormData();
         body.append("voice", document.getElementById("voice").files[0]);
         body.append("voice_name", voiceName.value || document.getElementById("voice").files[0].name);
+        body.append("voice_source_type", form.elements["voice_source_type"].value);
         const response = await fetch("/api/save-voice", { method: "POST", body });
         const data = await response.json();
         if (!response.ok) {
@@ -710,12 +738,11 @@ def page_html() -> str:
       envStatus.textContent = "环境检查失败";
     });
     voiceProfile.addEventListener("change", syncLibraryControls);
-    songLibrary.addEventListener("change", syncLibraryControls);
     syncLibraryControls();
   </script>
 </body>
 </html>"""
-    return body.replace("__VOICE_OPTIONS__", voice_options).replace("__SONG_OPTIONS__", song_options)
+    return body.replace("__VOICE_OPTIONS__", voice_options)
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -748,21 +775,37 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path == "/api/save-voice":
             try:
-                voice_path, voice_name = self.read_voice_library_upload()
+                voice_path, voice_name, voice_source_type = self.read_voice_library_upload()
+                source_type = "upload_voice"
+                if voice_source_type == "mixed_voice":
+                    PROGRESS.reset("分离音色人声", 5, "running")
+                    separated = separate_vocals(
+                        voice_path,
+                        output_dir=ROOT / "data" / "processed" / "web" / "voice_separated",
+                        model="htdemucs",
+                        cache_dir=ROOT / "data" / "cache",
+                        overlap=0.10,
+                        shifts=0,
+                    )
+                    voice_path = separated.vocals
+                    source_type = "separated_voice"
+                    PROGRESS.update("保存音色", 80)
                 profile = save_voice_to_library(
                     input_audio=voice_path,
                     name=voice_name,
                     description=None,
-                    source_type="upload_voice",
+                    source_type=source_type,
                     rights_status="own_voice",
                     allowed_as_target=True,
                     library_dir=DEFAULT_LIBRARY_DIR,
                     db_path=DEFAULT_DB_PATH,
                 )
+                PROGRESS.update("音色已保存", 100, "completed")
                 self.send_json(
                     {
                         "id": profile.id,
                         "name": profile.name,
+                        "source_type": source_type,
                         "message": "音色已保存",
                     }
                 )
@@ -887,7 +930,7 @@ class AppHandler(BaseHTTPRequestHandler):
             "voice_profile_id": form.getfirst("voice_profile_id", ""),
             "song_id": form.getfirst("song_id", ""),
             "save_voice": False,
-            "save_song": form.getfirst("save_song", "") == "1",
+            "save_song": False,
             "voice_name": form.getfirst("voice_name", ""),
             "song_title": form.getfirst("song_title", ""),
             "rights_confirmed": True,
@@ -898,7 +941,7 @@ class AppHandler(BaseHTTPRequestHandler):
             raise ValueError("请选择本地歌曲，或上传一个新歌曲文件")
         return saved, fields
 
-    def read_voice_library_upload(self) -> Tuple[Path, str]:
+    def read_voice_library_upload(self) -> Tuple[Path, str, str]:
         content_type = self.headers.get("content-type", "")
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("请上传声音样本")
@@ -929,7 +972,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
         raw_name = str(form.getfirst("voice_name", "")).strip()
         voice_name = raw_name or Path(filename).stem or "我的声音"
-        return path, voice_name
+        voice_source_type = str(form.getfirst("voice_source_type", "clean_voice"))
+        if voice_source_type not in {"clean_voice", "mixed_voice"}:
+            voice_source_type = "clean_voice"
+        return path, voice_name, voice_source_type
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")
