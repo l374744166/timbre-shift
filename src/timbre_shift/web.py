@@ -579,6 +579,15 @@ def page_html() -> str:
       metrics.classList.add("visible");
     }
 
+    function cleanDownloadName(value, fallback) {
+      const cleaned = (value || "")
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, "-")
+        .replace(/\s+/g, " ");
+      if (!cleaned) return fallback;
+      return cleaned.toLowerCase().endsWith(".mp3") ? cleaned : `${cleaned}.mp3`;
+    }
+
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
       voiceUploadField.style.display = usingSavedVoice ? "none" : "grid";
@@ -681,6 +690,20 @@ def page_html() -> str:
         submit.disabled = false;
         stopProgressPolling();
       }
+    });
+
+    download.addEventListener("click", (event) => {
+      if (!download.href || download.href.endsWith("#")) {
+        event.preventDefault();
+        return;
+      }
+      const currentName = download.download || "final.mp3";
+      const name = window.prompt("输出 MP3 文件名", currentName);
+      if (name === null) {
+        event.preventDefault();
+        return;
+      }
+      download.download = cleanDownloadName(name, currentName);
     });
 
     saveVoiceButton.addEventListener("click", async () => {
