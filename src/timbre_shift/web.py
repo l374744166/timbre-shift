@@ -26,6 +26,7 @@ from .library import (
     save_voice_to_library,
 )
 from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
+from .vocal_segments import compact_for_conversion
 
 
 ROOT = Path.cwd()
@@ -436,7 +437,7 @@ def page_html() -> str:
             </label>
             <label class="option">
               <input type="radio" name="voice_source_type" value="mixed_voice">
-              <span><strong>带伴奏/混合声音</strong><span>先分离人声再保存，之后生成不用再分离音色</span></span>
+              <span><strong>歌曲/带伴奏声音</strong><span>高质量分离并筛选有效人声，较慢但更适合建音色</span></span>
             </label>
           </div>
         </div>
@@ -782,17 +783,26 @@ class AppHandler(BaseHTTPRequestHandler):
                 voice_path, voice_name, voice_source_type = self.read_voice_library_upload()
                 source_type = "upload_voice"
                 if voice_source_type == "mixed_voice":
-                    PROGRESS.reset("分离音色人声", 5, "running")
+                    PROGRESS.reset("高质量分离音色人声", 5, "running")
                     separated = separate_vocals(
                         voice_path,
                         output_dir=ROOT / "data" / "processed" / "web" / "voice_separated",
-                        model="htdemucs",
+                        model="htdemucs_ft",
                         cache_dir=ROOT / "data" / "cache",
-                        overlap=0.10,
+                        overlap=0.25,
                         shifts=0,
                     )
                     voice_path = separated.vocals
-                    source_type = "separated_voice"
+                    source_type = "separated_compact_voice"
+                    try:
+                        PROGRESS.update("筛选有效音色人声片段", 70)
+                        compact = compact_for_conversion(
+                            separated.vocals,
+                            voice_path.parent / "compact_voice.wav",
+                        )
+                        voice_path = compact.audio
+                    except ValueError:
+                        source_type = "separated_voice"
                     PROGRESS.update("保存音色", 80)
                 profile = save_voice_to_library(
                     input_audio=voice_path,
