@@ -14,3 +14,10 @@ class AudioTests(unittest.TestCase):
         self.assertIn("-t", command)
         self.assertIn("30", command)
 
+    def test_normalize_audio_can_start_from_middle(self):
+        with patch("timbre_shift.audio.run_command") as run_command:
+            normalize_audio(Path("song.mp3"), Path("song.wav"), duration_seconds=30, start_seconds=45.5)
+
+        command = run_command.call_args.args[0]
+        self.assertIn("-ss", command)
+        self.assertIn("45.500", command)

@@ -14,10 +14,17 @@ import wave
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 from urllib.parse import urlparse
 
-from .pipeline import PipelineOptions, check_environment, run_demo
+from .library import (
+    DEFAULT_DB_PATH,
+    DEFAULT_LIBRARY_DIR,
+    init_library,
+    list_songs,
+    list_voice_profiles,
+)
+from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
 
 
 ROOT = Path.cwd()
@@ -79,7 +86,16 @@ def safe_filename(name: str) -> str:
 
 
 def page_html() -> str:
-    return """<!doctype html>
+    init_library(DEFAULT_DB_PATH)
+    voice_options = "\n".join(
+        f'<option value="{html.escape(profile.id)}">{html.escape(profile.name)}</option>'
+        for profile in list_voice_profiles(only_allowed_targets=True, db_path=DEFAULT_DB_PATH)
+    )
+    song_options = "\n".join(
+        f'<option value="{html.escape(song.id)}">{html.escape(song.title)}</option>'
+        for song in list_songs(db_path=DEFAULT_DB_PATH)
+    )
+    body = """<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -137,13 +153,35 @@ def page_html() -> str:
       display: grid;
       gap: 18px;
     }
-    .field {
+    .section {
       display: grid;
-      gap: 8px;
+      gap: 12px;
       padding: 18px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .section-title h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .field {
+      display: grid;
+      gap: 8px;
+      padding: 0;
     }
     label {
       font-size: 15px;
@@ -157,6 +195,45 @@ def page_html() -> str:
       border-radius: 6px;
       background: #fff;
       font-size: 14px;
+    }
+    input[type="text"], select {
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 14px;
+    }
+    details {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    summary {
+      cursor: pointer;
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 650;
+      user-select: none;
+    }
+    .advanced-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .check {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .check input {
+      margin-top: 2px;
+      accent-color: var(--accent);
     }
     .option {
       display: flex;
@@ -217,6 +294,32 @@ def page_html() -> str:
       justify-content: space-between;
       align-items: center;
       gap: 14px;
+      flex-wrap: wrap;
+    }
+    .metrics {
+      width: 100%;
+      display: none;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .metrics.visible { display: grid; }
+    .metric {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 15px;
+      font-weight: 650;
     }
     audio {
       width: min(420px, 100%);
@@ -271,18 +374,85 @@ def page_html() -> str:
     </header>
 
     <form id="form">
-      <div class="field">
-        <label for="voice">你的声音样本</label>
-        <input id="voice" name="voice" type="file" accept="audio/*" required>
-      </div>
-      <div class="field">
-        <label for="song">歌曲文件</label>
-        <input id="song" name="song" type="file" accept="audio/*" required>
-      </div>
-      <label class="option" for="preview">
-        <input id="preview" name="preview" type="checkbox" checked>
-        <span>30秒试听</span>
-      </label>
+      <section class="section">
+        <div class="section-title">
+          <h2>音色</h2>
+          <span class="hint" id="voiceHint">选择已有音色，或上传新声音</span>
+        </div>
+        <div class="field">
+          <label for="voiceProfile">目标音色</label>
+          <select id="voiceProfile" name="voice_profile_id">
+            <option value="">上传新声音</option>
+            __VOICE_OPTIONS__
+          </select>
+        </div>
+        <div class="field" id="voiceUploadField">
+          <label for="voice">新声音样本</label>
+          <input id="voice" name="voice" type="file" accept="audio/*">
+        </div>
+        <details id="voiceAdvanced">
+          <summary>保存到音色库</summary>
+          <div class="advanced-grid">
+            <div class="field">
+              <label for="voiceName">音色名称</label>
+              <input id="voiceName" name="voice_name" type="text" placeholder="例如：我的声音">
+            </div>
+            <label class="check"><input id="saveVoice" name="save_voice" type="checkbox" value="1"> 保存这个声音，以后直接从下拉框选择</label>
+            <label class="check"><input id="rightsConfirmed" name="rights_confirmed" type="checkbox" value="1"> 我确认这是我自己的声音，或我已获得声音所有者授权</label>
+          </div>
+        </details>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <h2>歌曲</h2>
+          <span class="hint" id="songHint">选择已有歌曲，或上传新歌曲</span>
+        </div>
+        <div class="field">
+          <label for="songLibrary">歌曲 / 源人声</label>
+          <select id="songLibrary" name="song_id">
+            <option value="">上传新歌曲</option>
+            __SONG_OPTIONS__
+          </select>
+        </div>
+        <div class="field" id="songUploadField">
+          <label for="song">新歌曲文件</label>
+          <input id="song" name="song" type="file" accept="audio/*">
+        </div>
+        <div class="field">
+          <label for="sourceType">源音频类型</label>
+          <select id="sourceType" name="source_type">
+            <option value="song" selected>完整歌曲：自动分离人声和伴奏</option>
+            <option value="clean_vocal">干净人声：跳过分离</option>
+          </select>
+        </div>
+        <details id="songAdvanced">
+          <summary>保存到歌曲库</summary>
+          <div class="advanced-grid">
+            <div class="field">
+              <label for="songTitle">歌曲名称</label>
+              <input id="songTitle" name="song_title" type="text" placeholder="例如：安河桥">
+            </div>
+            <label class="check"><input id="saveSong" name="save_song" type="checkbox" value="1"> 保存歌曲和分离结果，下次换音色跳过重复分离</label>
+          </div>
+        </details>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <h2>生成</h2>
+          <span class="hint">先试听，再整首</span>
+        </div>
+        <div class="field">
+          <label for="mode">生成模式</label>
+          <select id="mode" name="mode">
+            <option value="m2max_hq_30" selected>默认整首：速度和质量平衡</option>
+            <option value="preview_auto_15_m2max">15秒试听：最快看效果</option>
+            <option value="m2max_hq_plus">高质量：更细一点</option>
+            <option value="m2max_offline_max">离线最高质量：最慢</option>
+          </select>
+        </div>
+      </section>
       <div class="actions">
         <button id="submit" type="submit">生成</button>
         <div id="message" class="message"></div>
@@ -300,7 +470,9 @@ def page_html() -> str:
 
     <section id="result" class="result">
       <audio id="player" controls></audio>
-      <a id="download" class="download" href="#" download>下载</a>
+      <a id="download" class="download" href="#" download>下载 MP3</a>
+      <a id="downloadWav" class="download" href="#" download>下载 WAV</a>
+      <div id="metrics" class="metrics"></div>
     </section>
   </main>
 
@@ -311,11 +483,22 @@ def page_html() -> str:
     const result = document.getElementById("result");
     const player = document.getElementById("player");
     const download = document.getElementById("download");
+    const downloadWav = document.getElementById("downloadWav");
+    const metrics = document.getElementById("metrics");
     const envStatus = document.getElementById("envStatus");
     const progress = document.getElementById("progress");
     const progressStep = document.getElementById("progressStep");
     const progressTime = document.getElementById("progressTime");
     const progressBar = document.getElementById("progressBar");
+    const voiceProfile = document.getElementById("voiceProfile");
+    const voiceUploadField = document.getElementById("voiceUploadField");
+    const voiceAdvanced = document.getElementById("voiceAdvanced");
+    const voiceHint = document.getElementById("voiceHint");
+    const songLibrary = document.getElementById("songLibrary");
+    const songUploadField = document.getElementById("songUploadField");
+    const songAdvanced = document.getElementById("songAdvanced");
+    const songHint = document.getElementById("songHint");
+    const sourceType = document.getElementById("sourceType");
     let progressPoller = null;
 
     function formatDuration(seconds) {
@@ -329,6 +512,40 @@ def page_html() -> str:
         return "Seed-VC";
       }
       return item;
+    }
+
+    function formatNumber(value, digits = 1) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+      return Number(value).toFixed(digits);
+    }
+
+    function renderMetrics(data) {
+      const items = [
+        ["总用时", `${formatNumber(data.total_seconds)} 秒`],
+        ["Demucs", `${formatNumber(data.demucs_seconds)} 秒`],
+        ["Seed-VC", `${formatNumber(data.seedvc_seconds)} 秒`],
+        ["有效人声", `${formatNumber(data.active_vocal_seconds)} 秒`],
+        ["人声占比", data.active_ratio == null ? "-" : `${formatNumber(data.active_ratio * 100)}%`],
+        ["Seed-VC RTF", formatNumber(data.seedvc_rtf, 2)],
+        ["MPS", data.mps_used ? "是" : "否"],
+        ["库分离命中", data.library_song_stems_hit ? "是" : "否"],
+        ["Seed-VC缓存", data.seedvc_cache_hit ? "命中" : "未命中"],
+      ];
+      metrics.innerHTML = items.map(([label, value]) => `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join("");
+      metrics.classList.add("visible");
+    }
+
+    function syncLibraryControls() {
+      const usingSavedVoice = Boolean(voiceProfile.value);
+      voiceUploadField.style.display = usingSavedVoice ? "none" : "grid";
+      voiceAdvanced.style.display = usingSavedVoice ? "none" : "block";
+      voiceHint.textContent = usingSavedVoice ? "正在使用已保存音色" : "选择已有音色，或上传新声音";
+
+      const usingSavedSong = Boolean(songLibrary.value);
+      songUploadField.style.display = usingSavedSong ? "none" : "grid";
+      songAdvanced.style.display = usingSavedSong ? "none" : "block";
+      sourceType.disabled = usingSavedSong;
+      songHint.textContent = usingSavedSong ? "正在使用已保存歌曲" : "选择已有歌曲，或上传新歌曲";
     }
 
     async function refreshEnv() {
@@ -380,6 +597,20 @@ def page_html() -> str:
       startProgressPolling();
       submit.disabled = true;
       const body = new FormData(form);
+      if (!body.get("voice_profile_id") && !document.getElementById("voice").files.length) {
+        message.className = "message error";
+        message.textContent = "请选择本地音色，或上传一个新声音样本";
+        submit.disabled = false;
+        stopProgressPolling();
+        return;
+      }
+      if (!body.get("song_id") && !document.getElementById("song").files.length) {
+        message.className = "message error";
+        message.textContent = "请选择本地歌曲，或上传一个新歌曲文件";
+        submit.disabled = false;
+        stopProgressPolling();
+        return;
+      }
       try {
         const response = await fetch("/api/generate", { method: "POST", body });
         const data = await response.json();
@@ -387,10 +618,15 @@ def page_html() -> str:
           throw new Error(data.error || "生成失败");
         }
         const url = data.download_url + "?t=" + Date.now();
-        player.src = url;
+        const mp3Url = (data.download_mp3_url || data.download_url) + "?t=" + Date.now();
+        const wavUrl = data.download_wav_url ? data.download_wav_url + "?t=" + Date.now() : url;
+        player.src = mp3Url;
         player.load();
-        download.href = url;
-        download.download = data.filename || "final.wav";
+        download.href = mp3Url;
+        download.download = data.mp3_filename || "final.mp3";
+        downloadWav.href = wavUrl;
+        downloadWav.download = data.wav_filename || "final.wav";
+        if (data.metrics) renderMetrics(data.metrics);
         result.classList.add("visible");
         message.className = data.mode === "test" ? "message warn" : "message";
         message.textContent = data.message || "生成完成";
@@ -408,9 +644,13 @@ def page_html() -> str:
     refreshEnv().catch(() => {
       envStatus.textContent = "环境检查失败";
     });
+    voiceProfile.addEventListener("change", syncLibraryControls);
+    songLibrary.addEventListener("change", syncLibraryControls);
+    syncLibraryControls();
   </script>
 </body>
 </html>"""
+    return body.replace("__VOICE_OPTIONS__", voice_options).replace("__SONG_OPTIONS__", song_options)
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -446,30 +686,57 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         try:
             PROGRESS.reset("接收上传文件", 1, "running")
-            files, clip_seconds = self.read_uploads()
+            files, fields = self.read_uploads()
+            mode = str(fields["mode"])
+            skip_separation = bool(fields["skip_separation"])
             PROGRESS.update("检查运行环境", 3)
             report = check_environment(self.seed_vc_dir)
             if report.ready:
                 final_mix = run_demo(
                     PipelineOptions(
-                        voice=files["voice"],
-                        song=files["song"],
+                        voice=files.get("voice"),
+                        song=files.get("song"),
                         seed_vc_dir=self.seed_vc_dir,
                         work_dir=ROOT / "data" / "processed" / "web",
                         output_dir=OUTPUT_DIR,
-                        clip_seconds=clip_seconds,
+                        cache_dir=ROOT / "data" / "cache",
+                        library_dir=DEFAULT_LIBRARY_DIR,
+                        library_db_path=DEFAULT_DB_PATH,
+                        render_mode=mode,
+                        device="mps",
+                        skip_separation=skip_separation,
+                        voice_profile_id=str(fields["voice_profile_id"]) or None,
+                        song_id=str(fields["song_id"]) or None,
+                        save_voice_to_library=bool(fields["save_voice"]),
+                        save_song_to_library=bool(fields["save_song"]),
+                        voice_name=str(fields["voice_name"]) or None,
+                        song_title=str(fields["song_title"]) or None,
+                        rights_confirmed=bool(fields["rights_confirmed"]),
+                        source_mode="clean_vocal" if skip_separation else "full_song",
                     ),
                     progress=lambda step, percent: PROGRESS.update(step, percent),
                 )
                 PROGRESS.update("生成完成", 100, "completed")
-                message = "30秒试听生成完成" if clip_seconds else "生成完成"
+                message = f"{PRESETS[mode].name}生成完成"
+                final_mp3 = OUTPUT_DIR / "final.mp3"
+                metrics_path = OUTPUT_DIR / "metrics.json"
+                metrics_payload = {}
+                if metrics_path.exists():
+                    metrics_payload = json.loads(metrics_path.read_text(encoding="utf-8"))
                 self.send_json(
                     {
-                        "download_url": f"/download/{final_mix.name}",
-                        "filename": final_mix.name,
+                        "download_url": f"/download/{final_mp3.name if final_mp3.exists() else final_mix.name}",
+                        "download_mp3_url": f"/download/{final_mp3.name}" if final_mp3.exists() else None,
+                        "download_wav_url": f"/download/{final_mix.name}",
+                        "mp3_filename": final_mp3.name if final_mp3.exists() else None,
+                        "wav_filename": final_mix.name,
                         "mode": "real",
                         "message": message,
-                        "clip_seconds": clip_seconds,
+                        "render_mode": mode,
+                        "skip_separation": skip_separation,
+                        "voice_profile_id": fields["voice_profile_id"],
+                        "song_id": fields["song_id"],
+                        "metrics": metrics_payload,
                     }
                 )
             else:
@@ -487,9 +754,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
         except Exception as exc:
             PROGRESS.fail(str(exc))
+            write_error_metrics(OUTPUT_DIR / "metrics.json", str(exc))
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
-    def read_uploads(self) -> Tuple[Dict[str, Path], Optional[int]]:
+    def read_uploads(self) -> Tuple[Dict[str, Path], Dict[str, object]]:
         content_type = self.headers.get("content-type", "")
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("请上传音频文件")
@@ -510,7 +778,7 @@ class AppHandler(BaseHTTPRequestHandler):
         for field in ["voice", "song"]:
             item = form[field] if field in form else None
             if item is None or not getattr(item, "filename", ""):
-                raise ValueError(f"缺少文件：{field}")
+                continue
             filename = safe_filename(item.filename)
             path = target_dir / f"{field}-{filename}"
             with path.open("wb") as output:
@@ -520,9 +788,26 @@ class AppHandler(BaseHTTPRequestHandler):
                         break
                     output.write(chunk)
             saved[field] = path
-        preview_value = form.getfirst("preview", "")
-        clip_seconds = 30 if preview_value else None
-        return saved, clip_seconds
+        mode = form.getfirst("mode", "m2max_hq_30")
+        if mode not in PRESETS:
+            mode = "m2max_hq_30"
+        skip_separation = form.getfirst("source_type", "song") == "clean_vocal"
+        fields: Dict[str, object] = {
+            "mode": mode,
+            "skip_separation": skip_separation,
+            "voice_profile_id": form.getfirst("voice_profile_id", ""),
+            "song_id": form.getfirst("song_id", ""),
+            "save_voice": form.getfirst("save_voice", "") == "1",
+            "save_song": form.getfirst("save_song", "") == "1",
+            "voice_name": form.getfirst("voice_name", ""),
+            "song_title": form.getfirst("song_title", ""),
+            "rights_confirmed": form.getfirst("rights_confirmed", "") == "1",
+        }
+        if not fields["voice_profile_id"] and "voice" not in saved:
+            raise ValueError("请选择本地音色，或上传一个新声音样本")
+        if not fields["song_id"] and "song" not in saved:
+            raise ValueError("请选择本地歌曲，或上传一个新歌曲文件")
+        return saved, fields
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")
@@ -590,6 +875,49 @@ def run_web_app(host: str, port: int, seed_vc_dir: Path) -> None:
     server = ThreadingHTTPServer((host, port), AppHandler)
     print(f"Timbre Shift web app: http://{host}:{port}")
     server.serve_forever()
+
+
+def write_error_metrics(path: Path, error: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "voice_profile_id": None,
+                "voice_profile_name": None,
+                "song_id": None,
+                "song_title": None,
+                "render_mode": None,
+                "source_mode": None,
+                "library_voice_hit": False,
+                "library_song_stems_hit": False,
+                "demucs_cache_hit": False,
+                "seedvc_cache_hit": False,
+                "song_duration_seconds": None,
+                "active_vocal_seconds": None,
+                "active_ratio": None,
+                "prepare_voice_seconds": 0.0,
+                "prepare_song_seconds": 0.0,
+                "demucs_seconds": 0.0,
+                "vocal_segment_detect_seconds": 0.0,
+                "seedvc_seconds": 0.0,
+                "restore_timeline_seconds": 0.0,
+                "mix_seconds": 0.0,
+                "mp3_export_seconds": 0.0,
+                "total_seconds": 0.0,
+                "seedvc_rtf": None,
+                "mps_requested": False,
+                "mps_used": False,
+                "seedvc_device": None,
+                "seedvc_cpu_fallback_used": False,
+                "output_wav": None,
+                "output_mp3": None,
+                "error_message": error,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 
 def create_test_result(path: Path) -> Path:

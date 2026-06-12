@@ -16,6 +16,8 @@ venv/
 # Large audio and model artifacts
 data/raw/*
 data/processed/*
+data/cache/*
+data/library/*
 data/reference_voice/*
 data/songs/*
 models/checkpoints/*

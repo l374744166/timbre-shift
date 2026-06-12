@@ -6,9 +6,8 @@ from timbre_shift.seed_vc import ensure_seed_vc_mac_compat
 
 
 class SeedVcTests(unittest.TestCase):
-    def test_mac_compat_patch_forces_cpu_and_float32_f0(self):
-        original = """import os
-import torch
+    def test_mac_compat_patch_uses_auto_device_and_float32_f0(self):
+        original = """import torch
 if torch.cuda.is_available():
     device = torch.device("cuda")
 elif torch.backends.mps.is_available():
@@ -26,6 +25,7 @@ else:
             ensure_seed_vc_mac_compat(Path(tmp))
 
             patched = inference.read_text()
-            self.assertIn('torch.device(os.environ.get("SEED_VC_DEVICE", "cpu"))', patched)
+            self.assertIn('os.environ.get("SEED_VC_DEVICE", "auto")', patched)
+            self.assertIn('torch.device("mps")', patched)
             self.assertIn("torch.float32", patched)
-            self.assertIn("torch.from_numpy(F0_ori).float().to(device)[None]", patched)
+            self.assertIn("torch.from_numpy(F0_ori.astype(np.float32)).to(device)[None]", patched)

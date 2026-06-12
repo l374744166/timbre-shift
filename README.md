@@ -51,6 +51,7 @@ Check your local environment:
 
 ```bash
 timbre-shift check --seed-vc-dir vendor/seed-vc
+timbre-shift check-mps
 ```
 
 Start the local upload page:
@@ -68,7 +69,25 @@ timbre-shift demo \
   --seed-vc-dir vendor/seed-vc
 ```
 
-The final mix is written to `outputs/final.wav`.
+The final mix is written to `outputs/final.wav`. The web app also writes
+`outputs/web/final.mp3` and `outputs/web/metrics.json`.
+
+## M2 Max Modes
+
+The web page defaults to `m2max_hq_30`, which uses Apple Silicon MPS, a short
+target voice reference, Seed-VC cache, MP3 export, and vocal-segment compaction.
+
+- `preview_auto_15_m2max`: 15 second preview, fastest way to check timbre.
+- `m2max_hq_30`: default full-song mode, balanced speed and quality.
+- `m2max_hq_plus`: higher quality full-song mode.
+- `m2max_offline_max`: slowest offline mode for best quality.
+
+If the uploaded source is already clean vocals, choose "干净人声：跳过分离" on
+the page. This skips Demucs and can save a large part of the run time.
+
+`outputs/web/metrics.json` records the time spent in preparation, Demucs,
+Seed-VC, timeline restore, mixing, MP3 export, cache hits, active vocal seconds,
+RTF, and whether MPS was actually used.
 
 On recent `torchaudio` versions, Demucs also needs `torchcodec` to save stems:
 
