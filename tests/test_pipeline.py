@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from timbre_shift.pipeline import PipelineOptions, check_environment, run_demo
+from timbre_shift.pipeline import PRESETS, PipelineOptions, check_environment, run_demo
 from timbre_shift.seed_vc import SeedVCResult
 from timbre_shift.vocal_segments import CompactVocalResult, VocalSegment
 
@@ -25,6 +25,9 @@ class PipelineTests(unittest.TestCase):
         report = check_environment(Path("/tmp/missing-seed-vc-for-test"))
 
         self.assertIn("inference.py", report.to_text())
+
+    def test_offline_max_compacts_vocals(self):
+        self.assertTrue(PRESETS["m2max_offline_max"].compact_vocals)
 
     def test_skip_separation_uses_prepared_song_as_source_vocal(self):
         with TemporaryDirectory() as tmp:

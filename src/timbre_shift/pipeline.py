@@ -64,7 +64,7 @@ PRESETS: dict[str, RenderPreset] = {
     "preview_auto_15_m2max": RenderPreset("15秒自动试听", 15, "htdemucs", 0.10, 4, 0.0, 8, False),
     "m2max_hq_30": RenderPreset("M2 Max默认整首", None, "htdemucs", 0.10, 16, 0.0, 16, True),
     "m2max_hq_plus": RenderPreset("M2 Max高质量Plus", None, "htdemucs", 0.10, 20, 0.2, 20, True),
-    "m2max_offline_max": RenderPreset("离线最高质量", None, "htdemucs_ft", 0.25, 25, 0.7, 25, False),
+    "m2max_offline_max": RenderPreset("离线最高质量", None, "htdemucs_ft", 0.25, 25, 0.7, 25, True),
     "preview_fast": RenderPreset("极速试听", 30, "htdemucs", 0.10, 4, 0.0, 20),
     "preview_balanced": RenderPreset("普通试听", 30, "htdemucs", 0.10, 10, 0.0, 30),
     "m2_full_fast": RenderPreset("M2整首快速", None, "htdemucs", 0.10, 12, 0.0, 15, True),
