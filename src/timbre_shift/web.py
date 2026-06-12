@@ -459,19 +459,6 @@ def page_html() -> str:
           <label for="song">歌曲文件</label>
           <input id="song" name="song" type="file" accept="audio/*">
         </div>
-        <div class="field">
-          <label>源音频类型</label>
-          <div class="radio-group two-column">
-            <label class="option">
-              <input type="radio" name="source_type" value="song" checked>
-              <span><strong>完整歌曲</strong><span>自动分离人声和伴奏</span></span>
-            </label>
-            <label class="option">
-              <input type="radio" name="source_type" value="clean_vocal">
-              <span><strong>已分离人声</strong><span>文件里没有伴奏，输出也不会混伴奏</span></span>
-            </label>
-          </div>
-        </div>
       </section>
 
       <section class="section">
@@ -917,7 +904,7 @@ class AppHandler(BaseHTTPRequestHandler):
         mode = form.getfirst("mode", "m2max_hq_30")
         if mode not in PRESETS:
             mode = "m2max_hq_30"
-        skip_separation = form.getfirst("source_type", "song") == "clean_vocal"
+        skip_separation = False
         fields: Dict[str, object] = {
             "mode": mode,
             "skip_separation": skip_separation,
