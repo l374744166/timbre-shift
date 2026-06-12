@@ -242,6 +242,9 @@ def page_html() -> str:
       display: grid;
       gap: 8px;
     }
+    .radio-group.two-column {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .option {
       display: grid;
       grid-template-columns: auto 1fr;
@@ -394,6 +397,7 @@ def page_html() -> str:
         flex-direction: column;
         grid-template-columns: 1fr;
       }
+      .radio-group.two-column { grid-template-columns: 1fr; }
       .status { white-space: normal; }
       button, .download { width: 100%; }
     }
@@ -425,7 +429,7 @@ def page_html() -> str:
         </div>
         <div class="field" id="voiceSourceField">
           <label>声音类型</label>
-          <div class="radio-group">
+          <div class="radio-group two-column">
             <label class="option">
               <input type="radio" name="voice_source_type" value="clean_voice" checked>
               <span><strong>干净声音</strong><span>已经是单独人声，保存最快</span></span>
@@ -449,30 +453,25 @@ def page_html() -> str:
       <section class="section">
         <div class="section-title">
           <h2>2. 歌曲</h2>
-          <span class="hint" id="songHint">上传要换声的音频</span>
+          <span class="hint" id="songHint">歌曲文件</span>
         </div>
         <div class="field" id="songUploadField">
           <label for="song">歌曲文件</label>
           <input id="song" name="song" type="file" accept="audio/*">
         </div>
-        <details>
-          <summary>高级设置</summary>
-          <div class="advanced-grid">
-            <div class="field">
-              <label>源音频类型</label>
-              <div class="radio-group">
-                <label class="option">
-                  <input type="radio" name="source_type" value="song" checked>
-                  <span><strong>完整歌曲</strong><span>自动分离人声和伴奏</span></span>
-                </label>
-                <label class="option">
-                  <input type="radio" name="source_type" value="clean_vocal">
-                  <span><strong>干净人声</strong><span>已经提前分离好，跳过歌曲分离</span></span>
-                </label>
-              </div>
-            </div>
+        <div class="field">
+          <label>源音频类型</label>
+          <div class="radio-group two-column">
+            <label class="option">
+              <input type="radio" name="source_type" value="song" checked>
+              <span><strong>完整歌曲</strong><span>自动分离人声和伴奏</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="source_type" value="clean_vocal">
+              <span><strong>干净人声</strong><span>已经提前分离好，跳过歌曲分离</span></span>
+            </label>
           </div>
-        </details>
+        </div>
       </section>
 
       <section class="section">
@@ -480,32 +479,27 @@ def page_html() -> str:
           <h2>3. 生成</h2>
           <span class="hint">默认整首模式</span>
         </div>
-        <details>
-          <summary>生成模式</summary>
-          <div class="advanced-grid">
-            <div class="field">
-              <label>模式</label>
-              <div class="radio-group">
-                <label class="option">
-                  <input type="radio" name="mode" value="m2max_hq_30" checked>
-                  <span><strong>默认整首</strong><span>速度和质量平衡</span></span>
-                </label>
-                <label class="option">
-                  <input type="radio" name="mode" value="preview_auto_15_m2max">
-                  <span><strong>15秒试听</strong><span>最快看效果</span></span>
-                </label>
-                <label class="option">
-                  <input type="radio" name="mode" value="m2max_hq_plus">
-                  <span><strong>高质量</strong><span>更细一点，会更慢</span></span>
-                </label>
-                <label class="option">
-                  <input type="radio" name="mode" value="m2max_offline_max">
-                  <span><strong>离线最高质量</strong><span>最慢，适合最终出片</span></span>
-                </label>
-              </div>
-            </div>
+        <div class="field">
+          <label>模式</label>
+          <div class="radio-group two-column">
+            <label class="option">
+              <input type="radio" name="mode" value="m2max_hq_30" checked>
+              <span><strong>默认整首</strong><span>速度和质量平衡</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="mode" value="preview_auto_15_m2max">
+              <span><strong>15秒试听</strong><span>最快看效果</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="mode" value="m2max_hq_plus">
+              <span><strong>高质量</strong><span>更细一点，会更慢</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="mode" value="m2max_offline_max">
+              <span><strong>离线最高质量</strong><span>最慢，适合最终出片</span></span>
+            </label>
           </div>
-        </details>
+        </div>
       </section>
       <div class="actions">
         <button id="submit" type="submit">生成</button>
