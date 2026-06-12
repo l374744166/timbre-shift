@@ -124,9 +124,9 @@ def page_html() -> str:
       background: var(--paper);
     }
     main {
-      width: min(760px, calc(100vw - 32px));
+      width: min(640px, calc(100vw - 32px));
       margin: 0 auto;
-      padding: 48px 0;
+      padding: 36px 0;
     }
     header {
       display: flex;
@@ -150,14 +150,14 @@ def page_html() -> str:
       text-align: right;
     }
     form {
-      margin-top: 28px;
+      margin-top: 20px;
       display: grid;
-      gap: 18px;
+      gap: 14px;
     }
     .section {
       display: grid;
-      gap: 12px;
-      padding: 18px;
+      gap: 14px;
+      padding: 16px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--panel);
@@ -170,7 +170,7 @@ def page_html() -> str:
     }
     .section-title h2 {
       margin: 0;
-      font-size: 17px;
+      font-size: 16px;
       line-height: 1.25;
       letter-spacing: 0;
     }
@@ -222,6 +222,12 @@ def page_html() -> str:
       display: grid;
       gap: 12px;
       margin-top: 12px;
+    }
+    .inline-fields {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: end;
     }
     .check {
       display: flex;
@@ -300,10 +306,13 @@ def page_html() -> str:
       display: none;
     }
     .result.visible {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      display: grid;
       gap: 14px;
+    }
+    .result-main {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       flex-wrap: wrap;
     }
     .metrics {
@@ -367,9 +376,10 @@ def page_html() -> str:
     }
     @media (max-width: 640px) {
       main { padding: 28px 0; }
-      header, .actions, .result.visible {
+      header, .actions, .result-main, .inline-fields {
         align-items: stretch;
         flex-direction: column;
+        grid-template-columns: 1fr;
       }
       .status { white-space: normal; }
       button, .download { width: 100%; }
@@ -386,58 +396,58 @@ def page_html() -> str:
     <form id="form">
       <section class="section">
         <div class="section-title">
-          <h2>音色</h2>
-          <span class="hint" id="voiceHint">选择已有音色，或上传新声音</span>
+          <h2>1. 音色</h2>
+          <span class="hint" id="voiceHint">选一个音色</span>
         </div>
         <div class="field">
-          <label for="voiceProfile">目标音色</label>
+          <label for="voiceProfile">已保存音色</label>
           <select id="voiceProfile" name="voice_profile_id">
             <option value="">上传新声音</option>
             __VOICE_OPTIONS__
           </select>
         </div>
         <div class="field" id="voiceUploadField">
-          <label for="voice">新声音样本</label>
+          <label for="voice">上传声音</label>
           <input id="voice" name="voice" type="file" accept="audio/*">
         </div>
-        <div class="field" id="voiceNameField">
-          <label for="voiceName">音色名称</label>
-          <input id="voiceName" name="voice_name" type="text" placeholder="例如：我的声音">
-        </div>
-        <div class="actions" id="voiceSaveActions">
+        <div class="inline-fields" id="voiceSaveActions">
+          <div class="field" id="voiceNameField">
+            <label for="voiceName">名称</label>
+            <input id="voiceName" name="voice_name" type="text" placeholder="例如：我的声音">
+          </div>
           <button class="secondary" id="saveVoiceButton" type="button">保存音色</button>
-          <div id="voiceSaveMessage" class="message"></div>
         </div>
+        <div id="voiceSaveMessage" class="message"></div>
       </section>
 
       <section class="section">
         <div class="section-title">
-          <h2>歌曲</h2>
-          <span class="hint" id="songHint">选择已有歌曲，或上传新歌曲</span>
-        </div>
-        <div class="field">
-          <label for="songLibrary">歌曲 / 源人声</label>
-          <select id="songLibrary" name="song_id">
-            <option value="">上传新歌曲</option>
-            __SONG_OPTIONS__
-          </select>
+          <h2>2. 歌曲</h2>
+          <span class="hint" id="songHint">上传要换声的音频</span>
         </div>
         <div class="field" id="songUploadField">
-          <label for="song">新歌曲文件</label>
+          <label for="song">歌曲文件</label>
           <input id="song" name="song" type="file" accept="audio/*">
         </div>
-        <div class="field">
-          <label for="sourceType">源音频类型</label>
-          <select id="sourceType" name="source_type">
-            <option value="song" selected>完整歌曲：自动分离人声和伴奏</option>
-            <option value="clean_vocal">干净人声：跳过分离</option>
-          </select>
-        </div>
-        <details id="songAdvanced">
-          <summary>保存到歌曲库</summary>
+        <details>
+          <summary>高级设置</summary>
           <div class="advanced-grid">
             <div class="field">
-              <label for="songTitle">歌曲名称</label>
+              <label for="sourceType">源音频类型</label>
+              <select id="sourceType" name="source_type">
+                <option value="song" selected>完整歌曲：自动分离人声和伴奏</option>
+                <option value="clean_vocal">干净人声：跳过分离</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="songLibrary">已保存歌曲</label>
+              <select id="songLibrary" name="song_id">
+                <option value="">不使用</option>
+                __SONG_OPTIONS__
+              </select>
+            </div>
+            <div class="field" id="songAdvanced">
+              <label for="songTitle">保存歌曲名称</label>
               <input id="songTitle" name="song_title" type="text" placeholder="例如：安河桥">
             </div>
             <label class="check"><input id="saveSong" name="save_song" type="checkbox" value="1"> 保存歌曲和分离结果，下次换音色跳过重复分离</label>
@@ -447,18 +457,23 @@ def page_html() -> str:
 
       <section class="section">
         <div class="section-title">
-          <h2>生成</h2>
-          <span class="hint">先试听，再整首</span>
+          <h2>3. 生成</h2>
+          <span class="hint">默认整首模式</span>
         </div>
-        <div class="field">
-          <label for="mode">生成模式</label>
-          <select id="mode" name="mode">
-            <option value="m2max_hq_30" selected>默认整首：速度和质量平衡</option>
-            <option value="preview_auto_15_m2max">15秒试听：最快看效果</option>
-            <option value="m2max_hq_plus">高质量：更细一点</option>
-            <option value="m2max_offline_max">离线最高质量：最慢</option>
-          </select>
-        </div>
+        <details>
+          <summary>生成模式</summary>
+          <div class="advanced-grid">
+            <div class="field">
+              <label for="mode">模式</label>
+              <select id="mode" name="mode">
+                <option value="m2max_hq_30" selected>默认整首：速度和质量平衡</option>
+                <option value="preview_auto_15_m2max">15秒试听：最快看效果</option>
+                <option value="m2max_hq_plus">高质量：更细一点</option>
+                <option value="m2max_offline_max">离线最高质量：最慢</option>
+              </select>
+            </div>
+          </div>
+        </details>
       </section>
       <div class="actions">
         <button id="submit" type="submit">生成</button>
@@ -476,10 +491,17 @@ def page_html() -> str:
     </form>
 
     <section id="result" class="result">
-      <audio id="player" controls></audio>
-      <a id="download" class="download" href="#" download>下载 MP3</a>
-      <a id="downloadWav" class="download" href="#" download>下载 WAV</a>
-      <div id="metrics" class="metrics"></div>
+      <div class="result-main">
+        <audio id="player" controls></audio>
+        <a id="download" class="download" href="#" download>下载 MP3</a>
+      </div>
+      <details>
+        <summary>结果详情</summary>
+        <div class="advanced-grid">
+          <a id="downloadWav" class="download" href="#" download>下载 WAV</a>
+          <div id="metrics" class="metrics"></div>
+        </div>
+      </details>
     </section>
   </main>
 
