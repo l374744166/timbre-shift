@@ -93,6 +93,7 @@ class PipelineLibraryTests(unittest.TestCase):
                 patch("timbre_shift.pipeline.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.separate_vocals") as separate_vocals, \
                 patch("timbre_shift.pipeline.convert_singing_voice_result", return_value=seedvc_result(converted)), \
+                patch("timbre_shift.pipeline.polish_vocal", side_effect=lambda source, output: source), \
                 patch("timbre_shift.pipeline.mix_audio", return_value=final), \
                 patch("timbre_shift.pipeline.export_mp3", return_value=root / "out" / "final.mp3"):
                 result = run_demo(

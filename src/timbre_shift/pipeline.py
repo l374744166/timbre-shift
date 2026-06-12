@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from .audio import export_mp3, middle_start, mix_audio, normalize_audio, probe_duration
+from .audio import export_mp3, middle_start, mix_audio, normalize_audio, polish_vocal, probe_duration
 from .commands import require_binary
 from .demucs import separate_vocals
 from .library import (
@@ -107,6 +107,7 @@ class PipelineOptions:
     song_artist: Optional[str] = None
     rights_confirmed: bool = False
     source_mode: str = "full_song"
+    polish_converted_vocal: bool = True
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
@@ -210,6 +211,11 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         "vocal_segment_detect_seconds": 0.0,
         "seedvc_seconds": 0.0,
         "restore_timeline_seconds": 0.0,
+        "vocal_polish_seconds": 0.0,
+        "vocal_polish_enabled": options.polish_converted_vocal,
+        "vocal_polish_chain": None,
+        "converted_vocal_wav": None,
+        "polished_vocal_wav": None,
         "mix_seconds": 0.0,
         "mp3_export_seconds": 0.0,
         "total_seconds": 0.0,
@@ -448,6 +454,25 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
             total_duration=compact_result.total_duration,
         )
         metrics["restore_timeline_seconds"] = time.perf_counter() - step_start
+
+    metrics["converted_vocal_wav"] = str(converted_vocal)
+    if options.polish_converted_vocal:
+        step_start = time.perf_counter()
+        update("优化换声后人声", 90)
+        converted_vocal = polish_vocal(
+            converted_vocal,
+            converted_dir / "converted_optimized.wav",
+        )
+        metrics["vocal_polish_seconds"] = time.perf_counter() - step_start
+        metrics["polished_vocal_wav"] = str(converted_vocal)
+        metrics["vocal_polish_chain"] = [
+            "去低频浑浊",
+            "轻微提高清晰度和空气感",
+            "削齿音",
+            "压缩动态",
+            "限幅防爆",
+            "响度统一",
+        ]
 
     if backing_track is None:
         update("导出已换声人声", 92)

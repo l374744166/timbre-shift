@@ -112,6 +112,46 @@ def mix_audio(
     return output
 
 
+def polish_vocal(
+    source: Path,
+    output: Path,
+    sample_rate: int = 44100,
+) -> Path:
+    """Post-process the converted vocal so it sits better in a song mix."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    filters = ",".join(
+        [
+            "highpass=f=70",
+            "lowpass=f=15500",
+            "equalizer=f=250:t=q:w=1.1:g=-1.8",
+            "equalizer=f=3200:t=q:w=1.0:g=1.4",
+            "equalizer=f=8500:t=q:w=1.2:g=1.0",
+            "deesser=i=0.35:m=0.55:f=0.45",
+            "acompressor=threshold=-20dB:ratio=2.2:attack=8:release=90:makeup=1.8",
+            "alimiter=limit=0.92",
+            "loudnorm=I=-18:TP=-1.5:LRA=11",
+        ]
+    )
+    run_command(
+        as_strs(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                source,
+                "-af",
+                filters,
+                "-ac",
+                1,
+                "-ar",
+                sample_rate,
+                output,
+            ]
+        )
+    )
+    return output
+
+
 def export_mp3(source: Path, output: Path, bitrate: str = "192k") -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     run_command(
