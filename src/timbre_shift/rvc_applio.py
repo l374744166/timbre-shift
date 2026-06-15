@@ -206,7 +206,7 @@ def train_applio_model(
     library_dir: Path = DEFAULT_LIBRARY_DIR,
     db_path: Path = DEFAULT_DB_PATH,
     applio_dir: Path | None = None,
-    epochs: int = 120,
+    epochs: int = 40,
     batch_size: int = 4,
     sample_rate: int = 40000,
 ) -> VoiceModel:

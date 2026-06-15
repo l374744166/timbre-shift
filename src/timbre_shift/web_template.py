@@ -582,7 +582,7 @@ def page_html() -> str:
               <button class="secondary" id="prepareApplioButton" type="button">准备数据集</button>
               <button class="secondary" id="trainApplioButton" type="button">训练模型</button>
             </div>
-            <div class="hint">默认 120 epoch / batch 4，训练完成后模型会自动出现在下拉框</div>
+            <div class="hint">默认 40 epoch / batch 4，训练完成后模型会自动出现在下拉框</div>
             <div id="applioTrainMessage" class="message"></div>
           </div>
         </div>

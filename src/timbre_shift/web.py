@@ -205,7 +205,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     voice_id,
                     library_dir=DEFAULT_LIBRARY_DIR,
                     db_path=DEFAULT_DB_PATH,
-                    epochs=120,
+                    epochs=40,
                     batch_size=4,
                     sample_rate=40000,
                 )
