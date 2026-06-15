@@ -372,6 +372,24 @@ def page_html() -> str:
       border-radius: 6px;
       background: #fff;
     }
+    .model-row.selected {
+      border-color: var(--accent);
+      background: #eef7f3;
+    }
+    .model-pick {
+      min-height: 30px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      display: block;
+      text-align: left;
+      justify-content: flex-start;
+    }
+    .model-pick:hover {
+      background: transparent;
+      color: var(--accent);
+    }
     .model-name {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -674,15 +692,15 @@ def page_html() -> str:
           </div>
         </div>
         <div class="field" id="voiceModelField">
-          <label for="voiceModel">模型</label>
+          <div class="train-panel" id="applioTrainPanel">
+            <button class="secondary" id="openApplioTrainButton" type="button">训练 Applio 模型</button>
+          </div>
+          <label for="voiceModel">已有模型</label>
           <select id="voiceModel" name="voice_model_id">
             <option value="">Seed-VC 默认参考音色</option>
           </select>
           <div class="hint" id="voiceModelHint">Seed-VC 会直接使用当前音色参考音频</div>
           <div class="model-list" id="voiceModelList"></div>
-          <div class="train-panel" id="applioTrainPanel">
-            <button class="secondary" id="openApplioTrainButton" type="button">训练 Applio 模型</button>
-          </div>
         </div>
       </section>
       <div class="actions">
@@ -848,6 +866,7 @@ def page_html() -> str:
     let selectedVoiceFiles = [];
     let selectedRvcTrainingFiles = [];
     let hasReadyVoiceModel = false;
+    let currentReadyVoiceModels = [];
 
     function formatDuration(seconds) {
       const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -886,15 +905,17 @@ def page_html() -> str:
         return;
       }
       voiceModelList.classList.add("visible");
+      const selectedId = voiceModel.value || (models[0] && models[0].id) || "";
       voiceModelList.innerHTML = models.map((model) => {
         const seconds = model.dataset_seconds == null ? "-" : `${formatNumber(model.dataset_seconds, 0)}秒素材`;
         const training = model.training_seconds == null ? "" : ` · 训练${formatNumber(model.training_seconds, 0)}秒`;
+        const selectedClass = model.id === selectedId ? " selected" : "";
         return `
-          <div class="model-row" data-id="${escapeHtml(model.id)}">
-            <div>
+          <div class="model-row${selectedClass}" data-id="${escapeHtml(model.id)}">
+            <button class="model-pick" type="button" data-id="${escapeHtml(model.id)}">
               <div class="model-name">${escapeHtml(model.name || model.id)}</div>
               <div class="model-meta">${escapeHtml(modelEpochLabel(model))} · ${escapeHtml(seconds)}${escapeHtml(training)} · ${escapeHtml(formatDateLabel(model.updated_at))}</div>
-            </div>
+            </button>
             <button class="danger model-delete" type="button" data-id="${escapeHtml(model.id)}" data-name="${escapeHtml(model.name || model.id)}">删除</button>
           </div>
         `;
@@ -1136,6 +1157,7 @@ def page_html() -> str:
         voiceModel.innerHTML = '<option value="">Seed-VC 默认参考音色</option>';
         voiceModel.disabled = true;
         voiceModelHint.textContent = "Seed-VC 会直接使用当前音色参考音频";
+        currentReadyVoiceModels = [];
         renderVoiceModelList([]);
         applioTrainMessage.textContent = "";
         updateGenerateAvailability();
@@ -1145,6 +1167,7 @@ def page_html() -> str:
       if (!voiceProfile.value) {
         voiceModel.innerHTML = '<option value="">先选择已保存音色</option>';
         voiceModelHint.textContent = "Applio RVC 需要已保存音色和已训练模型";
+        currentReadyVoiceModels = [];
         renderVoiceModelList([]);
         applioTrainMessage.textContent = "";
         updateGenerateAvailability();
@@ -1158,10 +1181,12 @@ def page_html() -> str:
         if (!readyModels.length) {
           voiceModel.innerHTML = '<option value="">没有可用 Applio RVC 模型</option>';
           voiceModelHint.textContent = "该音色还没有 Applio RVC 模型，请先添加素材并训练";
+          currentReadyVoiceModels = [];
           renderVoiceModelList([]);
           updateGenerateAvailability();
           return;
         }
+        currentReadyVoiceModels = readyModels;
         renderVoiceModelList(readyModels);
         hasReadyVoiceModel = true;
         voiceModel.innerHTML = '<option value="">自动选择最新模型</option>' + readyModels.map((model) => {
@@ -1405,6 +1430,15 @@ def page_html() -> str:
 
     voiceModelList.addEventListener("click", async (event) => {
       const deleteButton = event.target.closest(".model-delete");
+      const pickButton = event.target.closest(".model-pick");
+      if (pickButton && !deleteButton) {
+        voiceModel.value = pickButton.dataset.id || "";
+        renderVoiceModelList(currentReadyVoiceModels);
+        message.className = "message";
+        message.textContent = "已选择模型";
+        updateGenerateAvailability();
+        return;
+      }
       if (!deleteButton) return;
       const id = deleteButton.dataset.id;
       const name = deleteButton.dataset.name || "这个模型";
@@ -1576,6 +1610,10 @@ def page_html() -> str:
       input.addEventListener("change", syncRvcTrainingSource);
     });
     songLibrary.addEventListener("change", syncLibraryControls);
+    voiceModel.addEventListener("change", () => {
+      renderVoiceModelList(currentReadyVoiceModels);
+      updateGenerateAvailability();
+    });
     songInput.addEventListener("change", renderSongFileSummary);
     songFileSummary.addEventListener("click", (event) => {
       if (!event.target.closest("#clearSongButton")) return;
