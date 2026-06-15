@@ -229,10 +229,24 @@ def train_applio_model(
     applio_dataset = _copy_dataset_to_applio(dataset.dataset_path, model_name, root)
 
     start = time.perf_counter()
+    wall_start = time.time()
     code = f"""
+import json
+import shutil
 from pathlib import Path
 from core import run_extract_script, run_preprocess_script, run_prerequisites_script, run_train_script
 import rvc.lib.tools.prerequisites_download as prerequisites
+
+assets_config = Path("assets/config.json")
+if not assets_config.exists():
+    template = Path("assets/config_template.json")
+    if not template.exists():
+        raise FileNotFoundError("Applio 配置模板缺失: assets/config_template.json")
+    assets_config.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(template, assets_config)
+config_data = json.loads(assets_config.read_text(encoding="utf-8"))
+config_data.setdefault("model_author", "Timbre Shift")
+assets_config.write_text(json.dumps(config_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 # Timbre Shift trains Applio with HiFi-GAN by default. Applio's downloader also
 # fetches RefineGAN files, but those are not needed for this path and are large
@@ -249,18 +263,30 @@ required = [
 missing = [path for path in required if not Path(path).exists()]
 if missing:
     raise FileNotFoundError("Applio RVC 训练资源缺失: " + ", ".join(missing))
+def ensure_step_ok(message, step):
+    print(message)
+    if "failed" in str(message).lower():
+        raise RuntimeError(f"Applio RVC {{step}}失败: {{message}}")
 msg = run_preprocess_script({model_name!r}, {str(applio_dataset)!r}, {sample_rate}, {os.cpu_count() or 4}, "Automatic", False, True, 0.5, 3.0, 0.3, "none")
-print(msg)
-msg = run_extract_script({model_name!r}, "rmvpe", {os.cpu_count() or 4}, 0, {sample_rate}, "contentvec", None, 2)
-print(msg)
+ensure_step_ok(msg, "预处理")
+msg = run_extract_script({model_name!r}, "rmvpe", {os.cpu_count() or 4}, "-", {sample_rate}, "contentvec", None, 2)
+ensure_step_ok(msg, "抽特征")
+feature_dir = Path("logs") / {model_name!r} / "extracted"
+filelist = Path("logs") / {model_name!r} / "filelist.txt"
+if not any(feature_dir.glob("*.npy")) or not filelist.exists() or filelist.stat().st_size == 0:
+    raise RuntimeError("Applio RVC 抽特征没有生成训练特征；Mac 上请使用 CPU 抽特征，当前目录为空或 filelist 为空")
 msg = run_train_script({model_name!r}, 10, True, True, {epochs}, {sample_rate}, {batch_size}, 0, True, 20, True, False, "Auto", False)
-print(msg)
+ensure_step_ok(msg, "训练")
 """
     _run_applio_python(root, code)
     training_seconds = time.perf_counter() - start
 
     logs_dir = root / "logs" / model_name
-    model_candidates = sorted(logs_dir.glob(f"{model_name}_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
+    model_candidates = sorted(
+        [path for path in logs_dir.glob(f"{model_name}_*.pth") if path.stat().st_mtime >= wall_start],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     index_candidates = sorted(logs_dir.glob("*.index"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not model_candidates:
         raise FileNotFoundError(f"Applio RVC 训练完成但没有找到模型：{logs_dir}")
