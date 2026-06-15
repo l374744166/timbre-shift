@@ -354,6 +354,37 @@ def page_html() -> str:
       padding: 0 10px;
       font-size: 13px;
     }
+    .model-list {
+      display: none;
+      gap: 6px;
+    }
+    .model-list.visible {
+      display: grid;
+    }
+    .model-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 7px 7px 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
+    .model-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .model-meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
     .selected-file-list {
       display: grid;
       gap: 6px;
@@ -648,6 +679,7 @@ def page_html() -> str:
             <option value="">Seed-VC 默认参考音色</option>
           </select>
           <div class="hint" id="voiceModelHint">Seed-VC 会直接使用当前音色参考音频</div>
+          <div class="model-list" id="voiceModelList"></div>
           <div class="train-panel" id="applioTrainPanel">
             <button class="secondary" id="openApplioTrainButton" type="button">训练 Applio 模型</button>
           </div>
@@ -791,6 +823,7 @@ def page_html() -> str:
     const voiceModelField = document.getElementById("voiceModelField");
     const voiceModel = document.getElementById("voiceModel");
     const voiceModelHint = document.getElementById("voiceModelHint");
+    const voiceModelList = document.getElementById("voiceModelList");
     const applioTrainPanel = document.getElementById("applioTrainPanel");
     const openApplioTrainButton = document.getElementById("openApplioTrainButton");
     const applioTrainDialog = document.getElementById("applioTrainDialog");
@@ -832,6 +865,40 @@ def page_html() -> str:
     function formatNumber(value, digits = 1) {
       if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
       return Number(value).toFixed(digits);
+    }
+
+    function formatDateLabel(value) {
+      if (!value) return "-";
+      return String(value).replace("T", " ").replace("Z", "");
+    }
+
+    function modelEpochLabel(model) {
+      const nameMatch = String(model.name || "").match(/(\d+)\s*轮/);
+      if (nameMatch) return `${nameMatch[1]}轮`;
+      const pathMatch = String(model.model_path || "").match(/_(\d+)e_/);
+      return pathMatch ? `${pathMatch[1]}轮` : "轮数未知";
+    }
+
+    function renderVoiceModelList(models) {
+      if (!models.length) {
+        voiceModelList.classList.remove("visible");
+        voiceModelList.innerHTML = "";
+        return;
+      }
+      voiceModelList.classList.add("visible");
+      voiceModelList.innerHTML = models.map((model) => {
+        const seconds = model.dataset_seconds == null ? "-" : `${formatNumber(model.dataset_seconds, 0)}秒素材`;
+        const training = model.training_seconds == null ? "" : ` · 训练${formatNumber(model.training_seconds, 0)}秒`;
+        return `
+          <div class="model-row" data-id="${escapeHtml(model.id)}">
+            <div>
+              <div class="model-name">${escapeHtml(model.name || model.id)}</div>
+              <div class="model-meta">${escapeHtml(modelEpochLabel(model))} · ${escapeHtml(seconds)}${escapeHtml(training)} · ${escapeHtml(formatDateLabel(model.updated_at))}</div>
+            </div>
+            <button class="danger model-delete" type="button" data-id="${escapeHtml(model.id)}" data-name="${escapeHtml(model.name || model.id)}">删除</button>
+          </div>
+        `;
+      }).join("");
     }
 
     function renderMetrics(data) {
@@ -1069,6 +1136,7 @@ def page_html() -> str:
         voiceModel.innerHTML = '<option value="">Seed-VC 默认参考音色</option>';
         voiceModel.disabled = true;
         voiceModelHint.textContent = "Seed-VC 会直接使用当前音色参考音频";
+        renderVoiceModelList([]);
         applioTrainMessage.textContent = "";
         updateGenerateAvailability();
         return;
@@ -1077,6 +1145,7 @@ def page_html() -> str:
       if (!voiceProfile.value) {
         voiceModel.innerHTML = '<option value="">先选择已保存音色</option>';
         voiceModelHint.textContent = "Applio RVC 需要已保存音色和已训练模型";
+        renderVoiceModelList([]);
         applioTrainMessage.textContent = "";
         updateGenerateAvailability();
         return;
@@ -1089,9 +1158,11 @@ def page_html() -> str:
         if (!readyModels.length) {
           voiceModel.innerHTML = '<option value="">没有可用 Applio RVC 模型</option>';
           voiceModelHint.textContent = "该音色还没有 Applio RVC 模型，请先添加素材并训练";
+          renderVoiceModelList([]);
           updateGenerateAvailability();
           return;
         }
+        renderVoiceModelList(readyModels);
         hasReadyVoiceModel = true;
         voiceModel.innerHTML = '<option value="">自动选择最新模型</option>' + readyModels.map((model) => {
           const seconds = model.dataset_seconds == null ? "" : ` · ${formatNumber(model.dataset_seconds, 0)}秒素材`;
@@ -1329,6 +1400,36 @@ def page_html() -> str:
       } finally {
         addVoiceSampleButton.disabled = false;
         syncLibraryControls();
+      }
+    });
+
+    voiceModelList.addEventListener("click", async (event) => {
+      const deleteButton = event.target.closest(".model-delete");
+      if (!deleteButton) return;
+      const id = deleteButton.dataset.id;
+      const name = deleteButton.dataset.name || "这个模型";
+      if (!window.confirm(`删除模型「${name}」？`)) return;
+      deleteButton.disabled = true;
+      message.className = "message";
+      message.textContent = "删除模型中...";
+      try {
+        const body = new FormData();
+        body.append("voice_model_id", id);
+        const response = await fetch("/api/delete-voice-model", { method: "POST", body });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "删除模型失败");
+        }
+        if (voiceModel.value === id) {
+          voiceModel.value = "";
+        }
+        message.textContent = "模型已删除";
+        await refreshVoiceModels();
+      } catch (error) {
+        message.className = "message error";
+        message.textContent = error.message;
+      } finally {
+        updateGenerateAvailability();
       }
     });
 

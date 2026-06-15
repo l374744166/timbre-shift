@@ -19,6 +19,7 @@ from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
     add_voice_sample_to_profile,
+    archive_voice_model,
     archive_voice_profile,
     list_voice_samples,
     list_voice_models,
@@ -65,6 +66,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     "engine_id": model.engine_id,
                     "status": model.status,
                     "dataset_seconds": model.dataset_seconds,
+                    "training_seconds": model.training_seconds,
+                    "model_path": model.model_path,
                     "updated_at": model.updated_at,
                 }
                 for model in list_voice_models(voice_id, engine_id=engine_id, db_path=DEFAULT_DB_PATH)
@@ -160,6 +163,19 @@ class AppHandler(BaseHTTPRequestHandler):
                     raise ValueError("请选择要删除的音色")
                 archive_voice_profile(voice_id, db_path=DEFAULT_DB_PATH)
                 self.send_json({"id": voice_id, "message": "音色已删除"})
+            except Exception as exc:
+                PROGRESS.fail(str(exc))
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/delete-voice-model":
+            try:
+                fields = self.read_form_fields()
+                model_id = str(fields.get("voice_model_id", "")).strip()
+                if not model_id:
+                    raise ValueError("请选择要删除的模型")
+                archive_voice_model(model_id, db_path=DEFAULT_DB_PATH)
+                self.send_json({"id": model_id, "message": "模型已删除"})
             except Exception as exc:
                 PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
