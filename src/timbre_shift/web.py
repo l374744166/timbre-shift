@@ -378,6 +378,34 @@ def page_html() -> str:
       padding: 0 10px;
       font-size: 13px;
     }
+    .selected-file-list {
+      display: grid;
+      gap: 6px;
+    }
+    .selected-file-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 5px 5px 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.3;
+    }
+    .selected-file-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-remove {
+      min-height: 26px;
+      padding: 0 9px;
+      font-size: 12px;
+    }
     .actions {
       display: flex;
       align-items: center;
@@ -545,6 +573,7 @@ def page_html() -> str:
           <label for="voice">上传声音</label>
           <input id="voice" name="voice" type="file" accept="audio/*" multiple>
           <div class="hint" id="voiceFileSummary">可分多次选择，素材会累加</div>
+          <div class="selected-file-list" id="voiceFileList"></div>
         </div>
         <div class="field" id="voiceSourceField">
           <label>声音类型</label>
@@ -578,6 +607,7 @@ def page_html() -> str:
         <div class="field" id="songUploadField">
           <label for="song">歌曲文件</label>
           <input id="song" name="song" type="file" accept="audio/*">
+          <div class="selected-file-list" id="songFileSummary"></div>
         </div>
       </section>
 
@@ -658,6 +688,7 @@ def page_html() -> str:
     const voiceMenu = document.getElementById("voiceMenu");
     const voiceInput = document.getElementById("voice");
     const voiceFileSummary = document.getElementById("voiceFileSummary");
+    const voiceFileList = document.getElementById("voiceFileList");
     const voiceUploadField = document.getElementById("voiceUploadField");
     const voiceSourceField = document.getElementById("voiceSourceField");
     const voiceNameField = document.getElementById("voiceNameField");
@@ -667,7 +698,9 @@ def page_html() -> str:
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
     const voiceHint = document.getElementById("voiceHint");
+    const songInput = document.getElementById("song");
     const songUploadField = document.getElementById("songUploadField");
+    const songFileSummary = document.getElementById("songFileSummary");
     const songHint = document.getElementById("songHint");
     let progressPoller = null;
     let selectedVoiceFiles = [];
@@ -747,11 +780,18 @@ def page_html() -> str:
     function renderVoiceFileSummary() {
       if (!selectedVoiceFiles.length) {
         voiceFileSummary.textContent = "可分多次选择，素材会累加";
+        voiceFileList.innerHTML = "";
         return;
       }
       const names = selectedVoiceFiles.slice(0, 3).map((file) => file.name).join("，");
       const suffix = selectedVoiceFiles.length > 3 ? ` 等 ${selectedVoiceFiles.length} 个` : ` 共 ${selectedVoiceFiles.length} 个`;
       voiceFileSummary.textContent = `已选：${names}${suffix}`;
+      voiceFileList.innerHTML = selectedVoiceFiles.map((file, index) => `
+        <div class="selected-file-row">
+          <span class="selected-file-name">${escapeHtml(file.name)}</span>
+          <button class="danger file-remove" type="button" data-index="${index}">移除</button>
+        </div>
+      `).join("");
     }
 
     function appendVoiceFiles(files) {
@@ -770,7 +810,28 @@ def page_html() -> str:
     function clearVoiceFiles() {
       selectedVoiceFiles = [];
       voiceInput.value = "";
+      syncVoiceInputFiles();
       renderVoiceFileSummary();
+    }
+
+    function removeVoiceFile(index) {
+      selectedVoiceFiles.splice(index, 1);
+      syncVoiceInputFiles();
+      renderVoiceFileSummary();
+    }
+
+    function renderSongFileSummary() {
+      const file = songInput.files[0];
+      if (!file) {
+        songFileSummary.innerHTML = "";
+        return;
+      }
+      songFileSummary.innerHTML = `
+        <div class="selected-file-row">
+          <span class="selected-file-name">${escapeHtml(file.name)}</span>
+          <button class="danger file-remove" id="clearSongButton" type="button">取消</button>
+        </div>
+      `;
     }
 
     function selectedVoiceLabel() {
@@ -874,7 +935,7 @@ def page_html() -> str:
         stopProgressPolling();
         return;
       }
-      if (!document.getElementById("song").files.length) {
+      if (!songInput.files.length) {
         message.className = "message error";
         message.textContent = "请上传一个歌曲文件";
         submit.disabled = false;
@@ -1052,8 +1113,20 @@ def page_html() -> str:
       envStatus.textContent = "环境检查失败";
     });
     voiceInput.addEventListener("change", () => appendVoiceFiles(voiceInput.files));
+    voiceFileList.addEventListener("click", (event) => {
+      const removeButton = event.target.closest(".file-remove");
+      if (!removeButton) return;
+      removeVoiceFile(Number(removeButton.dataset.index));
+    });
+    songInput.addEventListener("change", renderSongFileSummary);
+    songFileSummary.addEventListener("click", (event) => {
+      if (!event.target.closest("#clearSongButton")) return;
+      songInput.value = "";
+      renderSongFileSummary();
+    });
     voiceProfile.addEventListener("change", syncLibraryControls);
     renderVoiceFileSummary();
+    renderSongFileSummary();
     syncLibraryControls();
   </script>
 </body>
