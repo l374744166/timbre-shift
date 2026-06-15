@@ -455,6 +455,7 @@ def page_html() -> str:
         <div class="field" id="voiceUploadField">
           <label for="voice">上传声音</label>
           <input id="voice" name="voice" type="file" accept="audio/*" multiple>
+          <div class="hint" id="voiceFileSummary">可分多次选择，素材会累加</div>
         </div>
         <div class="field" id="voiceSourceField">
           <label>声音类型</label>
@@ -563,6 +564,8 @@ def page_html() -> str:
     const progressTime = document.getElementById("progressTime");
     const progressBar = document.getElementById("progressBar");
     const voiceProfile = document.getElementById("voiceProfile");
+    const voiceInput = document.getElementById("voice");
+    const voiceFileSummary = document.getElementById("voiceFileSummary");
     const voiceUploadField = document.getElementById("voiceUploadField");
     const voiceSourceField = document.getElementById("voiceSourceField");
     const voiceNameField = document.getElementById("voiceNameField");
@@ -576,6 +579,7 @@ def page_html() -> str:
     const songUploadField = document.getElementById("songUploadField");
     const songHint = document.getElementById("songHint");
     let progressPoller = null;
+    let selectedVoiceFiles = [];
 
     function formatDuration(seconds) {
       const mins = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -625,6 +629,46 @@ def page_html() -> str:
         .replace(/\s+/g, " ");
       if (!cleaned) return fallback;
       return cleaned.toLowerCase().endsWith(".mp3") ? cleaned : `${cleaned}.mp3`;
+    }
+
+    function voiceFileKey(file) {
+      return `${file.name}:${file.size}:${file.lastModified}`;
+    }
+
+    function syncVoiceInputFiles() {
+      if (typeof DataTransfer === "undefined") return;
+      const transfer = new DataTransfer();
+      selectedVoiceFiles.forEach((file) => transfer.items.add(file));
+      voiceInput.files = transfer.files;
+    }
+
+    function renderVoiceFileSummary() {
+      if (!selectedVoiceFiles.length) {
+        voiceFileSummary.textContent = "可分多次选择，素材会累加";
+        return;
+      }
+      const names = selectedVoiceFiles.slice(0, 3).map((file) => file.name).join("，");
+      const suffix = selectedVoiceFiles.length > 3 ? ` 等 ${selectedVoiceFiles.length} 个` : ` 共 ${selectedVoiceFiles.length} 个`;
+      voiceFileSummary.textContent = `已选：${names}${suffix}`;
+    }
+
+    function appendVoiceFiles(files) {
+      const existing = new Set(selectedVoiceFiles.map(voiceFileKey));
+      Array.from(files).forEach((file) => {
+        const key = voiceFileKey(file);
+        if (!existing.has(key)) {
+          selectedVoiceFiles.push(file);
+          existing.add(key);
+        }
+      });
+      syncVoiceInputFiles();
+      renderVoiceFileSummary();
+    }
+
+    function clearVoiceFiles() {
+      selectedVoiceFiles = [];
+      voiceInput.value = "";
+      renderVoiceFileSummary();
     }
 
     function syncLibraryControls() {
@@ -690,7 +734,9 @@ def page_html() -> str:
       startProgressPolling();
       submit.disabled = true;
       const body = new FormData(form);
-      if (!body.get("voice_profile_id") && !document.getElementById("voice").files.length) {
+      body.delete("voice");
+      selectedVoiceFiles.forEach((file) => body.append("voice", file));
+      if (!body.get("voice_profile_id") && !selectedVoiceFiles.length) {
         message.className = "message error";
         message.textContent = "请选择本地音色，或上传一个新声音样本";
         submit.disabled = false;
@@ -757,12 +803,12 @@ def page_html() -> str:
       voiceSaveMessage.textContent = "保存中...";
       saveVoiceButton.disabled = true;
       try {
-        const voiceFiles = document.getElementById("voice").files;
+        const voiceFiles = selectedVoiceFiles;
         if (!voiceFiles.length) {
           throw new Error("先选择一个或多个声音样本");
         }
         const body = new FormData();
-        Array.from(voiceFiles).forEach((file) => body.append("voice", file));
+        voiceFiles.forEach((file) => body.append("voice", file));
         body.append("voice_name", voiceName.value || voiceFiles[0].name);
         body.append("voice_source_type", form.elements["voice_source_type"].value);
         const response = await fetch("/api/save-voice", { method: "POST", body });
@@ -776,6 +822,7 @@ def page_html() -> str:
         option.selected = true;
         voiceProfile.appendChild(option);
         voiceSaveMessage.textContent = data.added_count > 1 ? `已保存，素材数 ${data.sample_count}` : "已保存";
+        clearVoiceFiles();
         syncLibraryControls();
       } catch (error) {
         voiceSaveMessage.className = "message error";
@@ -794,13 +841,13 @@ def page_html() -> str:
         if (!id) {
           throw new Error("先选择一个已保存音色");
         }
-        const voiceFiles = document.getElementById("voice").files;
+        const voiceFiles = selectedVoiceFiles;
         if (!voiceFiles.length) {
           throw new Error("先选择一个或多个声音素材");
         }
         const body = new FormData();
         body.append("voice_profile_id", id);
-        Array.from(voiceFiles).forEach((file) => body.append("voice", file));
+        voiceFiles.forEach((file) => body.append("voice", file));
         body.append("voice_name", voiceName.value || voiceFiles[0].name);
         body.append("voice_source_type", form.elements["voice_source_type"].value);
         const response = await fetch("/api/add-voice-sample", { method: "POST", body });
@@ -810,7 +857,7 @@ def page_html() -> str:
         }
         voiceSaveMessage.textContent = `已添加素材，总数 ${data.sample_count}`;
         voiceName.value = "";
-        document.getElementById("voice").value = "";
+        clearVoiceFiles();
       } catch (error) {
         voiceSaveMessage.className = "message error";
         voiceSaveMessage.textContent = error.message;
@@ -852,7 +899,9 @@ def page_html() -> str:
     refreshEnv().catch(() => {
       envStatus.textContent = "环境检查失败";
     });
+    voiceInput.addEventListener("change", () => appendVoiceFiles(voiceInput.files));
     voiceProfile.addEventListener("change", syncLibraryControls);
+    renderVoiceFileSummary();
     syncLibraryControls();
   </script>
 </body>
