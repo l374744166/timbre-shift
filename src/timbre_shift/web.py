@@ -1138,9 +1138,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
         saved: Dict[str, Path] = {}
         for field in ["voice", "song"]:
-            item = form[field] if field in form else None
-            if item is None or not getattr(item, "filename", ""):
+            items = self._upload_items(form, field)
+            if not items:
                 continue
+            item = items[0]
             filename = safe_filename(item.filename)
             path = target_dir / f"{field}-{filename}"
             with path.open("wb") as output:
