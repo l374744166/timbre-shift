@@ -290,7 +290,55 @@ def page_html() -> str:
       font-size: 13px;
       font-weight: 500;
     }
-    .voice-list {
+    .native-select {
+      display: none;
+    }
+    .voice-dropdown {
+      position: relative;
+    }
+    .voice-trigger {
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 650;
+      text-align: left;
+    }
+    .voice-trigger:hover {
+      border-color: var(--accent);
+      background: #fff;
+      color: var(--ink);
+    }
+    .voice-trigger::after {
+      content: "⌄";
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1;
+    }
+    .voice-menu {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      display: none;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 12px 28px rgba(23, 32, 38, 0.14);
+      padding: 6px;
+    }
+    .voice-dropdown.open .voice-menu {
       display: grid;
       gap: 6px;
     }
@@ -299,15 +347,16 @@ def page_html() -> str:
       grid-template-columns: 1fr auto;
       align-items: center;
       gap: 8px;
-      min-height: 40px;
-      padding: 6px 6px 6px 10px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
+      min-height: 38px;
+      padding: 4px 4px 4px 8px;
+      border-radius: 5px;
       background: #fff;
     }
     .voice-row.selected {
-      border-color: var(--accent);
       background: #eef7f3;
+    }
+    .voice-empty {
+      padding: 8px;
     }
     .voice-select {
       min-height: 30px;
@@ -483,11 +532,14 @@ def page_html() -> str:
         </div>
         <div class="field">
           <label for="voiceProfile">已保存音色</label>
-          <select id="voiceProfile" name="voice_profile_id">
+          <select class="native-select" id="voiceProfile" name="voice_profile_id">
             <option value="">上传新声音</option>
             __VOICE_OPTIONS__
           </select>
-          <div class="voice-list" id="voiceList"></div>
+          <div class="voice-dropdown" id="voiceDropdown">
+            <button class="voice-trigger" id="voiceTrigger" type="button">上传新声音</button>
+            <div class="voice-menu" id="voiceMenu"></div>
+          </div>
         </div>
         <div class="field" id="voiceUploadField">
           <label for="voice">上传声音</label>
@@ -601,7 +653,9 @@ def page_html() -> str:
     const progressTime = document.getElementById("progressTime");
     const progressBar = document.getElementById("progressBar");
     const voiceProfile = document.getElementById("voiceProfile");
-    const voiceList = document.getElementById("voiceList");
+    const voiceDropdown = document.getElementById("voiceDropdown");
+    const voiceTrigger = document.getElementById("voiceTrigger");
+    const voiceMenu = document.getElementById("voiceMenu");
     const voiceInput = document.getElementById("voice");
     const voiceFileSummary = document.getElementById("voiceFileSummary");
     const voiceUploadField = document.getElementById("voiceUploadField");
@@ -718,13 +772,28 @@ def page_html() -> str:
       renderVoiceFileSummary();
     }
 
-    function renderVoiceList() {
+    function selectedVoiceLabel() {
+      const selected = voiceProfile.options[voiceProfile.selectedIndex];
+      return selected ? selected.textContent : "上传新声音";
+    }
+
+    function closeVoiceDropdown() {
+      voiceDropdown.classList.remove("open");
+    }
+
+    function renderVoiceMenu() {
+      voiceTrigger.textContent = selectedVoiceLabel();
       const options = Array.from(voiceProfile.options).filter((option) => option.value);
+      const uploadRow = `
+        <div class="voice-row ${voiceProfile.value ? "" : "selected"}" data-id="">
+          <button class="voice-select" type="button" data-id="">上传新声音</button>
+        </div>
+      `;
       if (!options.length) {
-        voiceList.innerHTML = '<div class="hint">还没有保存音色</div>';
+        voiceMenu.innerHTML = `${uploadRow}<div class="hint voice-empty">还没有保存音色</div>`;
         return;
       }
-      voiceList.innerHTML = options.map((option) => `
+      voiceMenu.innerHTML = uploadRow + options.map((option) => `
         <div class="voice-row ${option.selected ? "selected" : ""}" data-id="${escapeHtml(option.value)}">
           <button class="voice-select" type="button" data-id="${escapeHtml(option.value)}">${escapeHtml(option.textContent)}</button>
           <button class="danger voice-delete" type="button" data-id="${escapeHtml(option.value)}" data-name="${escapeHtml(option.textContent)}">删除</button>
@@ -743,7 +812,7 @@ def page_html() -> str:
       voiceHint.textContent = usingSavedVoice ? "可继续添加素材到当前音色" : "选择已有音色，或上传新声音";
       songUploadField.style.display = "grid";
       songHint.textContent = "上传要换声的音频";
-      renderVoiceList();
+      renderVoiceMenu();
     }
 
     async function refreshEnv() {
@@ -928,11 +997,22 @@ def page_html() -> str:
       }
     });
 
-    voiceList.addEventListener("click", async (event) => {
+    voiceTrigger.addEventListener("click", () => {
+      voiceDropdown.classList.toggle("open");
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!voiceDropdown.contains(event.target)) {
+        closeVoiceDropdown();
+      }
+    });
+
+    voiceMenu.addEventListener("click", async (event) => {
       const selectButton = event.target.closest(".voice-select");
       const deleteButton = event.target.closest(".voice-delete");
       if (selectButton) {
         voiceProfile.value = selectButton.dataset.id;
+        closeVoiceDropdown();
         syncLibraryControls();
         return;
       }
@@ -957,6 +1037,7 @@ def page_html() -> str:
           voiceProfile.value = "";
         }
         voiceSaveMessage.textContent = "已删除";
+        closeVoiceDropdown();
         syncLibraryControls();
       } catch (error) {
         voiceSaveMessage.className = "message error";
