@@ -26,6 +26,7 @@ from .diagnostics import AnalyzerContext, analyze_generation
 from .library import (
     best_voice_reference,
     get_voice_model,
+    get_voice_model_by_id,
     get_song,
     get_voice_profile,
     save_song_to_library,
@@ -205,6 +206,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "engine_name": None,
         "engine_requires_training": False,
         "engine_available": False,
+        "voice_model_id": options.voice_model_id,
         "library_voice_hit": False,
         "library_song_stems_hit": False,
         "demucs_cache_hit": False,
@@ -487,9 +489,20 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
     elif options.engine_id == "rvc_mlx":
         if not voice_profile:
             raise ValueError("RVC-MLX 需要选择一个已保存音色")
-        voice_model = get_voice_model(voice_profile.id, engine_id="rvc_mlx", db_path=options.library_db_path)
+        if options.voice_model_id:
+            voice_model = get_voice_model_by_id(
+                options.voice_model_id,
+                voice_id=voice_profile.id,
+                engine_id="rvc_mlx",
+                db_path=options.library_db_path,
+            )
+            if voice_model.status != "ready":
+                raise FileNotFoundError("选择的 RVC-MLX 模型还没有准备好。")
+        else:
+            voice_model = get_voice_model(voice_profile.id, engine_id="rvc_mlx", db_path=options.library_db_path)
         if not voice_model:
             raise FileNotFoundError("RVC-MLX 模型不存在，请先准备数据并训练。")
+        metrics["voice_model_id"] = voice_model.id
         if not engine.is_available():
             missing = ", ".join(str(item) for item in engine_check.get("missing", []))
             raise RuntimeError(f"RVC-MLX 未安装或未配置：{missing}")

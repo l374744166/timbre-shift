@@ -22,6 +22,7 @@ class FakeRVCMLXEngine:
     def __init__(self, converted: Path) -> None:
         self.converted = converted
         self.called = False
+        self.target_voice_or_model = None
 
     def check(self):
         return {"available": True}
@@ -31,6 +32,7 @@ class FakeRVCMLXEngine:
 
     def convert(self, **kwargs):
         self.called = True
+        self.target_voice_or_model = kwargs["target_voice_or_model"]
         return EngineResult(
             converted_vocal_path=self.converted,
             engine_id=self.id,
@@ -96,9 +98,10 @@ class PipelineEngineTests(unittest.TestCase):
             raw = root / "raw.wav"
             song = root / "song.wav"
             model_path = root / "model.mlx"
+            selected_model_path = root / "selected-model.mlx"
             converted = root / "converted.wav"
             final = root / "final.wav"
-            for path in [raw, song, model_path, converted, final]:
+            for path in [raw, song, model_path, selected_model_path, converted, final]:
                 path.write_bytes(path.name.encode())
             profile = create_voice_profile(
                 name="Allowed",
@@ -123,6 +126,14 @@ class PipelineEngineTests(unittest.TestCase):
                 status="ready",
                 db_path=db_path,
             )
+            selected_model = create_voice_model_record(
+                profile.id,
+                engine_id="rvc_mlx",
+                model_name="Selected RVC",
+                model_path=selected_model_path,
+                status="ready",
+                db_path=db_path,
+            )
             fake_engine = FakeRVCMLXEngine(converted)
 
             with patch("timbre_shift.pipeline.get_engine", return_value=fake_engine), \
@@ -141,10 +152,12 @@ class PipelineEngineTests(unittest.TestCase):
                         output_dir=root / "out",
                         skip_separation=True,
                         engine_id="rvc_mlx",
+                        voice_model_id=selected_model.id,
                     )
                 )
 
             self.assertTrue(fake_engine.called)
+            self.assertEqual(fake_engine.target_voice_or_model, selected_model_path)
             self.assertEqual(result.read_bytes(), converted.read_bytes())
 
 

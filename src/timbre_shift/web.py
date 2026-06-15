@@ -21,6 +21,7 @@ from .library import (
     add_voice_sample_to_profile,
     archive_voice_profile,
     list_voice_samples,
+    list_voice_models,
     save_voice_to_library,
 )
 from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
@@ -48,6 +49,26 @@ class AppHandler(BaseHTTPRequestHandler):
             return
         if request_path == "/api/progress":
             self.send_json(PROGRESS.snapshot())
+            return
+        if request_path == "/api/voice-models":
+            query = parse_qs(parsed.query)
+            voice_id = (query.get("voice_id") or [""])[0]
+            engine_id = (query.get("engine_id") or ["rvc_mlx"])[0]
+            if not voice_id:
+                self.send_json({"models": []})
+                return
+            models = [
+                {
+                    "id": model.id,
+                    "name": model.model_name,
+                    "engine_id": model.engine_id,
+                    "status": model.status,
+                    "dataset_seconds": model.dataset_seconds,
+                    "updated_at": model.updated_at,
+                }
+                for model in list_voice_models(voice_id, engine_id=engine_id, db_path=DEFAULT_DB_PATH)
+            ]
+            self.send_json({"models": models})
             return
         if request_path.startswith("/download/"):
             download_name = parse_qs(parsed.query).get("name", [None])[0]
@@ -238,6 +259,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         library_db_path=DEFAULT_DB_PATH,
                         render_mode=mode,
                         engine_id=engine_id,
+                        voice_model_id=str(fields["voice_model_id"]) or None,
                         device="mps",
                         skip_separation=skip_separation,
                         voice_profile_id=str(fields["voice_profile_id"]) or None,
@@ -269,6 +291,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         "message": message,
                         "render_mode": mode,
                         "engine_id": engine_id,
+                        "voice_model_id": fields["voice_model_id"],
                         "skip_separation": skip_separation,
                         "voice_profile_id": fields["voice_profile_id"],
                         "song_id": fields["song_id"],
@@ -340,6 +363,7 @@ class AppHandler(BaseHTTPRequestHandler):
         fields: Dict[str, object] = {
             "mode": mode,
             "engine_id": engine_id,
+            "voice_model_id": form.getfirst("voice_model_id", ""),
             "skip_separation": skip_separation,
             "voice_profile_id": form.getfirst("voice_profile_id", ""),
             "song_id": form.getfirst("song_id", ""),

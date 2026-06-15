@@ -7,6 +7,7 @@ from timbre_shift.library import (
     create_voice_model_record,
     create_voice_profile,
     get_voice_model,
+    get_voice_model_by_id,
     list_voice_models,
 )
 
@@ -47,6 +48,7 @@ class VoiceModelTests(unittest.TestCase):
             )
 
             self.assertEqual(get_voice_model(profile.id, db_path=db_path), record)
+            self.assertEqual(get_voice_model_by_id(record.id, voice_id=profile.id, db_path=db_path), record)
             self.assertEqual(list_voice_models(profile.id, db_path=db_path), [record])
 
             archive_voice_model(record.id, db_path=db_path)

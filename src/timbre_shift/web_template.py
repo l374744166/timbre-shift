@@ -554,6 +554,13 @@ def page_html() -> str:
             </label>
           </div>
         </div>
+        <div class="field" id="voiceModelField">
+          <label for="voiceModel">模型</label>
+          <select id="voiceModel" name="voice_model_id">
+            <option value="">Seed-VC 默认参考音色</option>
+          </select>
+          <div class="hint" id="voiceModelHint">Seed-VC 会直接使用当前音色参考音频</div>
+        </div>
       </section>
       <div class="actions">
         <button id="submit" type="submit">生成</button>
@@ -615,6 +622,9 @@ def page_html() -> str:
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
     const voiceHint = document.getElementById("voiceHint");
+    const voiceModelField = document.getElementById("voiceModelField");
+    const voiceModel = document.getElementById("voiceModel");
+    const voiceModelHint = document.getElementById("voiceModelHint");
     const songInput = document.getElementById("song");
     const songUploadField = document.getElementById("songUploadField");
     const songFileSummary = document.getElementById("songFileSummary");
@@ -782,6 +792,46 @@ def page_html() -> str:
       `).join("");
     }
 
+    function selectedEngine() {
+      const checked = form.querySelector('input[name="engine_id"]:checked');
+      return checked ? checked.value : "seedvc";
+    }
+
+    async function refreshVoiceModels() {
+      const engine = selectedEngine();
+      if (engine !== "rvc_mlx") {
+        voiceModel.innerHTML = '<option value="">Seed-VC 默认参考音色</option>';
+        voiceModel.disabled = true;
+        voiceModelHint.textContent = "Seed-VC 会直接使用当前音色参考音频";
+        return;
+      }
+      voiceModel.disabled = false;
+      if (!voiceProfile.value) {
+        voiceModel.innerHTML = '<option value="">先选择已保存音色</option>';
+        voiceModelHint.textContent = "RVC-MLX 需要已保存音色和已训练模型";
+        return;
+      }
+      voiceModel.innerHTML = '<option value="">加载模型中...</option>';
+      try {
+        const response = await fetch(`/api/voice-models?voice_id=${encodeURIComponent(voiceProfile.value)}&engine_id=rvc_mlx`);
+        const data = await response.json();
+        const readyModels = (data.models || []).filter((model) => model.status === "ready");
+        if (!readyModels.length) {
+          voiceModel.innerHTML = '<option value="">没有可用 RVC-MLX 模型</option>';
+          voiceModelHint.textContent = "该音色还没有 RVC-MLX 模型，请先添加素材并训练";
+          return;
+        }
+        voiceModel.innerHTML = '<option value="">自动选择最新模型</option>' + readyModels.map((model) => {
+          const seconds = model.dataset_seconds == null ? "" : ` · ${formatNumber(model.dataset_seconds, 0)}秒素材`;
+          return `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}${seconds}</option>`;
+        }).join("");
+        voiceModelHint.textContent = `可用模型 ${readyModels.length} 个`;
+      } catch (error) {
+        voiceModel.innerHTML = '<option value="">模型加载失败</option>';
+        voiceModelHint.textContent = error.message;
+      }
+    }
+
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
       voiceUploadField.style.display = "grid";
@@ -794,6 +844,7 @@ def page_html() -> str:
       songUploadField.style.display = "grid";
       songHint.textContent = "上传要换声的音频";
       renderVoiceMenu();
+      refreshVoiceModels();
     }
 
     async function refreshEnv() {
@@ -1044,6 +1095,9 @@ def page_html() -> str:
       renderSongFileSummary();
     });
     voiceProfile.addEventListener("change", syncLibraryControls);
+    Array.from(form.elements["engine_id"]).forEach((input) => {
+      input.addEventListener("change", syncLibraryControls);
+    });
     renderVoiceFileSummary();
     renderSongFileSummary();
     syncLibraryControls();

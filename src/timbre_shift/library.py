@@ -882,6 +882,31 @@ def get_voice_model(
     return _voice_model_from_row(row) if row else None
 
 
+def get_voice_model_by_id(
+    model_id: str,
+    voice_id: str | None = None,
+    engine_id: str | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> VoiceModel:
+    init_library(db_path)
+    clauses = ["id = ?", "archived = 0"]
+    params: list[object] = [model_id]
+    if voice_id:
+        clauses.append("voice_id = ?")
+        params.append(voice_id)
+    if engine_id:
+        clauses.append("engine_id = ?")
+        params.append(engine_id)
+    with connect(db_path) as conn:
+        row = conn.execute(
+            f"SELECT * FROM voice_models WHERE {' AND '.join(clauses)}",
+            params,
+        ).fetchone()
+    if not row:
+        raise KeyError(f"Voice model not found: {model_id}")
+    return _voice_model_from_row(row)
+
+
 def update_voice_model_status(
     model_id: str,
     status: str,

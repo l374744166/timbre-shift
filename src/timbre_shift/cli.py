@@ -92,6 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--voice", default=None, help="Target voice reference audio.")
     demo.add_argument("--song", default=None, help="Source song audio.")
     demo.add_argument("--voice-profile-id", default=None)
+    demo.add_argument("--voice-model-id", default=None)
     demo.add_argument("--song-id", default=None)
     demo.add_argument("--save-voice-to-library", action="store_true")
     demo.add_argument("--save-song-to-library", action="store_true")
@@ -275,6 +276,7 @@ def main() -> int:
             skip_separation=args.skip_separation,
             compact_vocals=args.compact_vocals,
             voice_profile_id=args.voice_profile_id,
+            voice_model_id=args.voice_model_id,
             song_id=args.song_id,
             save_voice_to_library=args.save_voice_to_library,
             save_song_to_library=args.save_song_to_library,

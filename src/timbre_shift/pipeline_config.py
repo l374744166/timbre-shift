@@ -92,6 +92,7 @@ class PipelineOptions:
     seedvc_chunk_seconds: int = 0
     seedvc_chunk_workers: int = 0
     engine_id: str = "seedvc"
+    voice_model_id: Optional[str] = None
 
 
 def resolve_preset(options: PipelineOptions) -> RenderPreset:
