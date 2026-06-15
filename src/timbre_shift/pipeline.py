@@ -121,7 +121,7 @@ class PipelineOptions:
     source_mode: str = "full_song"
     polish_converted_vocal: bool = True
     seedvc_chunk_seconds: int = 0
-    seedvc_chunk_workers: int = 1
+    seedvc_chunk_workers: int = 0
 
 
 def _seedvc_chunk_settings(options: PipelineOptions, preset: RenderPreset) -> tuple[int, int]:
