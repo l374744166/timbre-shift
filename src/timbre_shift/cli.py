@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     applio_train.add_argument("--voice-id", required=True)
     applio_train.add_argument("--library-dir", default="data/library")
     applio_train.add_argument("--db-path", default="data/library/timbre_shift.db")
-    applio_train.add_argument("--epochs", type=int, default=40)
+    applio_train.add_argument("--epochs", type=int, default=10)
     applio_train.add_argument("--batch-size", type=int, default=4)
     applio_train.add_argument("--sample-rate", type=int, default=40000)
     applio_convert = applio_sub.add_parser("convert", help="Convert vocals with a ready Applio RVC model.")

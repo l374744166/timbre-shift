@@ -200,14 +200,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 voice_id = str(fields.get("voice_profile_id", "")).strip()
                 if not voice_id:
                     raise ValueError("先选择一个已保存音色")
+                epochs = int(fields.get("epochs", 10) or 10)
+                if epochs < 1 or epochs > 120:
+                    raise ValueError("训练轮数需要在 1 到 120 之间")
                 PROGRESS.reset("开始 Applio RVC 训练", 2, "running")
                 model = train_applio_model(
                     voice_id,
                     library_dir=DEFAULT_LIBRARY_DIR,
                     db_path=DEFAULT_DB_PATH,
-                    epochs=40,
+                    epochs=epochs,
                     batch_size=4,
                     sample_rate=40000,
+                    progress=lambda step, percent: PROGRESS.update(step, percent),
                 )
                 PROGRESS.update("Applio RVC 训练完成", 100, "completed")
                 self.send_json(
@@ -307,6 +311,13 @@ class AppHandler(BaseHTTPRequestHandler):
             mode = str(fields["mode"])
             engine_id = str(fields["engine_id"])
             skip_separation = bool(fields["skip_separation"])
+            if engine_id in {"rvc_applio", "rvc_mlx"}:
+                voice_id = str(fields["voice_profile_id"])
+                selected_model_id = str(fields["voice_model_id"])
+                ready_models = list_voice_models(voice_id, engine_id=engine_id, db_path=DEFAULT_DB_PATH)
+                ready_models = [model for model in ready_models if model.status == "ready"]
+                if not selected_model_id and not ready_models:
+                    raise ValueError("Applio RVC 还没有可用模型，请先训练模型再生成")
             PROGRESS.update("检查运行环境", 3)
             report = check_environment(self.seed_vc_dir)
             if report.ready:

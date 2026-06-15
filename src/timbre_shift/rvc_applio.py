@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .audio import normalize_audio, probe_duration
 from .engines.base import EngineResult
@@ -174,7 +176,11 @@ def prepare_applio_dataset(
     )
 
 
-def _run_applio_python(applio_dir: Path, code: str) -> None:
+def _run_applio_python(
+    applio_dir: Path,
+    code: str,
+    on_output: Callable[[str], None] | None = None,
+) -> None:
     check = check_applio(applio_dir)
     if not check.python:
         raise RuntimeError("Applio Python 环境不存在，请先在 vendor/applio 运行 ./run-install.sh")
@@ -182,9 +188,23 @@ def _run_applio_python(applio_dir: Path, code: str) -> None:
     env.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
     env.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
     command = [str(check.python), "-c", code]
-    try:
-        subprocess.run(command, cwd=applio_dir, env=env, check=True)
-    except subprocess.CalledProcessError as exc:
+    process = subprocess.Popen(
+        command,
+        cwd=applio_dir,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout:
+        for line in process.stdout:
+            print(line, end="")
+            if on_output:
+                on_output(line.rstrip())
+    return_code = process.wait()
+    if return_code:
+        exc = subprocess.CalledProcessError(return_code, command)
         raise RuntimeError(f"Applio RVC 命令失败：{exc}") from exc
 
 
@@ -206,9 +226,10 @@ def train_applio_model(
     library_dir: Path = DEFAULT_LIBRARY_DIR,
     db_path: Path = DEFAULT_DB_PATH,
     applio_dir: Path | None = None,
-    epochs: int = 40,
+    epochs: int = 10,
     batch_size: int = 4,
     sample_rate: int = 40000,
+    progress: Callable[[str, int], None] | None = None,
 ) -> VoiceModel:
     profile = get_voice_profile(voice_id, db_path=db_path)
     if not profile.allowed_as_target:
@@ -219,6 +240,8 @@ def train_applio_model(
     if not check.available:
         raise RuntimeError(f"Applio RVC 未安装或未配置：{', '.join(check.missing)}")
 
+    if progress:
+        progress("准备 Applio RVC 数据集", 5)
     dataset = prepare_applio_dataset(
         voice_id,
         library_dir=library_dir,
@@ -230,6 +253,23 @@ def train_applio_model(
 
     start = time.perf_counter()
     wall_start = time.time()
+    if progress:
+        progress("检查 Applio RVC 训练资源", 10)
+
+    def handle_output(line: str) -> None:
+        if not progress:
+            return
+        epoch_match = re.search(r"\bepoch=(\d+)\b", line)
+        if epoch_match:
+            epoch = min(epochs, int(epoch_match.group(1)))
+            percent = min(95, 20 + int(epoch / max(epochs, 1) * 72))
+            progress(f"Applio RVC 训练第 {epoch}/{epochs} 轮", percent)
+            return
+        if "Training has been successfully completed" in line:
+            progress("Applio RVC 正在导出模型", 96)
+        elif "Saved model" in line:
+            progress("Applio RVC 模型已保存", 98)
+
     code = f"""
 import json
 import shutil
@@ -278,7 +318,7 @@ if not any(feature_dir.glob("*.npy")) or not filelist.exists() or filelist.stat(
 msg = run_train_script({model_name!r}, 10, True, True, {epochs}, {sample_rate}, {batch_size}, 0, True, 20, True, False, "Auto", False)
 ensure_step_ok(msg, "训练")
 """
-    _run_applio_python(root, code)
+    _run_applio_python(root, code, on_output=handle_output)
     training_seconds = time.perf_counter() - start
 
     logs_dir = root / "logs" / model_name
