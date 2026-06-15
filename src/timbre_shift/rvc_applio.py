@@ -327,6 +327,16 @@ ensure_step_ok(msg, "训练")
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
+    if not model_candidates:
+        model_candidates = sorted(
+            [
+                path
+                for path in logs_dir.glob(f"{model_name}_{epochs}e_*.pth")
+                if "manual" not in path.name
+            ],
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
     index_candidates = sorted(logs_dir.glob("*.index"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not model_candidates:
         raise FileNotFoundError(f"Applio RVC 训练完成但没有找到模型：{logs_dir}")
