@@ -221,6 +221,7 @@ class AppHandler(BaseHTTPRequestHandler):
             PROGRESS.reset("接收上传文件", 1, "running")
             files, fields = self.read_uploads()
             mode = str(fields["mode"])
+            engine_id = str(fields["engine_id"])
             skip_separation = bool(fields["skip_separation"])
             PROGRESS.update("检查运行环境", 3)
             report = check_environment(self.seed_vc_dir)
@@ -236,6 +237,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         library_dir=DEFAULT_LIBRARY_DIR,
                         library_db_path=DEFAULT_DB_PATH,
                         render_mode=mode,
+                        engine_id=engine_id,
                         device="mps",
                         skip_separation=skip_separation,
                         voice_profile_id=str(fields["voice_profile_id"]) or None,
@@ -266,6 +268,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         "mode": "real",
                         "message": message,
                         "render_mode": mode,
+                        "engine_id": engine_id,
                         "skip_separation": skip_separation,
                         "voice_profile_id": fields["voice_profile_id"],
                         "song_id": fields["song_id"],
@@ -330,9 +333,13 @@ class AppHandler(BaseHTTPRequestHandler):
         mode = form.getfirst("mode", "m2max_hq_30")
         if mode not in PRESETS:
             mode = "m2max_hq_30"
+        engine_id = form.getfirst("engine_id", "seedvc")
+        if engine_id not in {"seedvc", "rvc_mlx"}:
+            engine_id = "seedvc"
         skip_separation = False
         fields: Dict[str, object] = {
             "mode": mode,
+            "engine_id": engine_id,
             "skip_separation": skip_separation,
             "voice_profile_id": form.getfirst("voice_profile_id", ""),
             "song_id": form.getfirst("song_id", ""),

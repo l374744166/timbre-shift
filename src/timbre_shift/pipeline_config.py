@@ -91,6 +91,7 @@ class PipelineOptions:
     polish_converted_vocal: bool = True
     seedvc_chunk_seconds: int = 0
     seedvc_chunk_workers: int = 0
+    engine_id: str = "seedvc"
 
 
 def resolve_preset(options: PipelineOptions) -> RenderPreset:

@@ -10,13 +10,16 @@ from pathlib import Path
 from .library import (
     archive_song,
     archive_voice_profile,
+    get_voice_model,
     init_library,
     list_songs,
     list_voice_profiles,
     save_song_to_library,
     save_voice_to_library,
 )
+from .engines import get_engine, list_engines
 from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
+from .rvc_mlx import convert_with_rvc_mlx, prepare_rvc_mlx_dataset, train_rvc_mlx_model
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +33,28 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--seed-vc-dir", default="vendor/seed-vc")
 
     subparsers.add_parser("check-mps", help="Check Apple Silicon MPS availability.")
+
+    engines = subparsers.add_parser("engines", help="Inspect conversion engines.")
+    engines_sub = engines.add_subparsers(dest="engines_command", required=True)
+    engines_sub.add_parser("list", help="List available conversion engines.")
+
+    rvc = subparsers.add_parser("rvc-mlx", help="Experimental RVC-MLX helpers.")
+    rvc_sub = rvc.add_subparsers(dest="rvc_command", required=True)
+    rvc_sub.add_parser("check", help="Check RVC-MLX availability.")
+    rvc_prepare = rvc_sub.add_parser("prepare-dataset", help="Prepare an RVC-MLX dataset for a voice.")
+    rvc_prepare.add_argument("--voice-id", required=True)
+    rvc_prepare.add_argument("--library-dir", default="data/library")
+    rvc_prepare.add_argument("--db-path", default="data/library/timbre_shift.db")
+    rvc_train = rvc_sub.add_parser("train", help="Train an RVC-MLX model for a voice.")
+    rvc_train.add_argument("--voice-id", required=True)
+    rvc_train.add_argument("--library-dir", default="data/library")
+    rvc_train.add_argument("--db-path", default="data/library/timbre_shift.db")
+    rvc_convert = rvc_sub.add_parser("convert", help="Convert vocals with a ready RVC-MLX model.")
+    rvc_convert.add_argument("--voice-id", required=True)
+    rvc_convert.add_argument("--source-vocal", required=True)
+    rvc_convert.add_argument("--output", required=True)
+    rvc_convert.add_argument("--library-dir", default="data/library")
+    rvc_convert.add_argument("--db-path", default="data/library/timbre_shift.db")
 
     web = subparsers.add_parser("web", help="Start the local upload demo web app.")
     web.add_argument("--host", default="127.0.0.1")
@@ -78,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--output-dir", default="outputs")
     demo.add_argument("--cache-dir", default="data/cache")
     demo.add_argument("--render-mode", choices=sorted(PRESETS), default="m2max_hq_30")
+    demo.add_argument("--engine-id", choices=["seedvc", "rvc_mlx"], default="seedvc")
     demo.add_argument("--device", choices=["auto", "mps", "cpu", "cuda"], default="auto")
     demo.add_argument("--demucs-model", default=None)
     demo.add_argument("--demucs-overlap", type=float, default=None)
@@ -120,6 +146,66 @@ def main() -> int:
 
         run_web_app(host=args.host, port=args.port, seed_vc_dir=Path(args.seed_vc_dir))
         return 0
+
+    if args.command == "engines":
+        if args.engines_command == "list":
+            for engine in list_engines():
+                check = engine.check()
+                state = "available" if check.get("available") else "missing dependencies"
+                requires = "requires training" if engine.requires_training else "zero-shot"
+                missing = check.get("missing") or []
+                suffix = f"\tmissing: {', '.join(map(str, missing))}" if missing else ""
+                print(f"{engine.id}\t{state}\t{requires}\t{engine.name}{suffix}")
+            return 0
+
+    if args.command == "rvc-mlx":
+        if args.rvc_command == "check":
+            check = get_engine("rvc_mlx").check()
+            for key, value in check.items():
+                print(f"{key}: {value}")
+            return 0 if check.get("available") else 1
+        if args.rvc_command == "prepare-dataset":
+            result = prepare_rvc_mlx_dataset(
+                args.voice_id,
+                library_dir=Path(args.library_dir),
+                db_path=Path(args.db_path),
+            )
+            print(f"Dataset: {result.dataset_path}")
+            print(f"Metadata: {result.metadata_path}")
+            print(f"total_seconds: {result.total_seconds:.2f}")
+            print(f"sample_count: {result.sample_count}")
+            print(f"segment_count: {result.segment_count}")
+            for warning in result.warnings:
+                print(f"warning: {warning}")
+            return 0
+        if args.rvc_command == "train":
+            try:
+                train_rvc_mlx_model(
+                    args.voice_id,
+                    library_dir=Path(args.library_dir),
+                    db_path=Path(args.db_path),
+                )
+            except NotImplementedError as exc:
+                print(str(exc))
+                return 2
+            return 0
+        if args.rvc_command == "convert":
+            model = get_voice_model(args.voice_id, engine_id="rvc_mlx", db_path=Path(args.db_path))
+            if not model:
+                print("RVC-MLX 模型不存在，请先准备数据并训练。")
+                return 1
+            result = convert_with_rvc_mlx(
+                source_vocal=Path(args.source_vocal),
+                model_path=Path(model.model_path),
+                output_dir=Path(args.output).parent,
+                options={"index_path": model.index_path},
+            )
+            output = Path(args.output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            if result.converted_vocal_path != output:
+                output.write_bytes(result.converted_vocal_path.read_bytes())
+            print(f"Converted: {output}")
+            return 0
 
     if args.command == "library":
         init_library()
@@ -175,6 +261,7 @@ def main() -> int:
             output_dir=Path(args.output_dir),
             cache_dir=Path(args.cache_dir),
             render_mode=args.render_mode,
+            engine_id=args.engine_id,
             demucs_model=args.demucs_model,
             demucs_overlap=args.demucs_overlap,
             diffusion_steps=args.diffusion_steps,

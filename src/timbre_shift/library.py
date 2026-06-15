@@ -65,6 +65,25 @@ class VoiceSample:
 
 
 @dataclass(frozen=True)
+class VoiceModel:
+    id: str
+    voice_id: str
+    engine_id: str
+    model_name: str
+    model_path: str
+    index_path: str | None
+    config_path: str | None
+    dataset_path: str | None
+    training_seconds: float | None
+    dataset_seconds: float | None
+    status: str
+    created_at: str
+    updated_at: str
+    metadata_json: str | None
+    archived: bool = False
+
+
+@dataclass(frozen=True)
 class SongRecord:
     id: str
     title: str
@@ -186,6 +205,23 @@ def init_library(db_path: Path = DEFAULT_DB_PATH) -> None:
                 created_at TEXT NOT NULL,
                 archived INTEGER NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS voice_models (
+                id TEXT PRIMARY KEY,
+                voice_id TEXT NOT NULL,
+                engine_id TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                model_path TEXT NOT NULL,
+                index_path TEXT,
+                config_path TEXT,
+                dataset_path TEXT,
+                training_seconds REAL,
+                dataset_seconds REAL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                metadata_json TEXT,
+                archived INTEGER NOT NULL DEFAULT 0
+            );
             """
         )
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(songs)")}
@@ -256,6 +292,26 @@ def _voice_sample_from_row(row: sqlite3.Row) -> VoiceSample:
         noise_score=row["noise_score"],
         notes=row["notes"],
         created_at=row["created_at"],
+        archived=bool(row["archived"]),
+    )
+
+
+def _voice_model_from_row(row: sqlite3.Row) -> VoiceModel:
+    return VoiceModel(
+        id=row["id"],
+        voice_id=row["voice_id"],
+        engine_id=row["engine_id"],
+        model_name=row["model_name"],
+        model_path=row["model_path"],
+        index_path=row["index_path"],
+        config_path=row["config_path"],
+        dataset_path=row["dataset_path"],
+        training_seconds=row["training_seconds"],
+        dataset_seconds=row["dataset_seconds"],
+        status=row["status"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        metadata_json=row["metadata_json"],
         archived=bool(row["archived"]),
     )
 
@@ -569,6 +625,21 @@ def list_voice_samples(
     return [_voice_sample_from_row(row) for row in rows]
 
 
+def get_voice_sample(sample_id: str, db_path: Path = DEFAULT_DB_PATH) -> VoiceSample:
+    init_library(db_path)
+    with connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM voice_samples WHERE id = ?", (sample_id,)).fetchone()
+    if not row:
+        raise KeyError(f"Voice sample not found: {sample_id}")
+    return _voice_sample_from_row(row)
+
+
+def archive_voice_sample(sample_id: str, db_path: Path = DEFAULT_DB_PATH) -> None:
+    init_library(db_path)
+    with connect(db_path) as conn:
+        conn.execute("UPDATE voice_samples SET archived = 1 WHERE id = ?", (sample_id,))
+
+
 def refresh_voice_profile_references(
     voice_id: str,
     library_dir: Path = DEFAULT_LIBRARY_DIR,
@@ -636,6 +707,18 @@ def add_voice_sample_to_profile(
     profile = get_voice_profile(voice_id, db_path=db_path)
     if require_allowed_target and not profile.allowed_as_target:
         raise PermissionError("这个音色没有授权为目标音色，不能继续添加素材")
+    file_hash = sha256_file(input_audio)
+    with connect(db_path) as conn:
+        existing = conn.execute(
+            """
+            SELECT * FROM voice_samples
+            WHERE voice_id = ? AND sha256 = ? AND archived = 0
+            ORDER BY created_at LIMIT 1
+            """,
+            (voice_id, file_hash),
+        ).fetchone()
+    if existing:
+        return _voice_sample_from_row(existing)
 
     sample_id = make_id("sample")
     sample_dir = library_dir / "voices" / voice_id / "samples" / sample_id
@@ -652,7 +735,7 @@ def add_voice_sample_to_profile(
         raw_audio_path=raw_audio,
         clean_audio_path=clean_path,
         source_type=source_type,
-        sha256=sha256_file(input_audio),
+        sha256=file_hash,
         duration_seconds=duration,
         sample_rate=sample_rate,
         channels=channels,
@@ -665,6 +748,177 @@ def add_voice_sample_to_profile(
     _write_metadata(sample_dir / "metadata.json", asdict(record))
     refresh_voice_profile_references(voice_id, library_dir=library_dir, db_path=db_path)
     return record
+
+
+def add_voice_sample(
+    voice_id: str,
+    input_audio: Path,
+    name: str | None,
+    source_type: str,
+    notes: str | None = None,
+    library_dir: Path = DEFAULT_LIBRARY_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> VoiceSample:
+    sample = add_voice_sample_to_profile(
+        voice_id=voice_id,
+        input_audio=input_audio,
+        name=name,
+        source_type=source_type,
+        library_dir=library_dir,
+        db_path=db_path,
+        require_allowed_target=True,
+    )
+    if notes:
+        with connect(db_path) as conn:
+            conn.execute("UPDATE voice_samples SET notes = ? WHERE id = ?", (notes, sample.id))
+        return get_voice_sample(sample.id, db_path=db_path)
+    return sample
+
+
+def create_voice_model_record(
+    voice_id: str,
+    engine_id: str,
+    model_name: str,
+    model_path: Path,
+    index_path: Path | None = None,
+    config_path: Path | None = None,
+    dataset_path: Path | None = None,
+    training_seconds: float | None = None,
+    dataset_seconds: float | None = None,
+    status: str = "ready",
+    metadata: dict[str, object] | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+    model_id: str | None = None,
+) -> VoiceModel:
+    profile = get_voice_profile(voice_id, db_path=db_path)
+    if not profile.allowed_as_target:
+        raise PermissionError("这个音色没有授权为目标音色，不能创建训练模型")
+    init_library(db_path)
+    now = utc_now()
+    record = VoiceModel(
+        id=model_id or make_id("model"),
+        voice_id=voice_id,
+        engine_id=engine_id,
+        model_name=model_name,
+        model_path=str(model_path),
+        index_path=str(index_path) if index_path else None,
+        config_path=str(config_path) if config_path else None,
+        dataset_path=str(dataset_path) if dataset_path else None,
+        training_seconds=training_seconds,
+        dataset_seconds=dataset_seconds,
+        status=status,
+        created_at=now,
+        updated_at=now,
+        metadata_json=json.dumps(metadata or {}, ensure_ascii=False),
+    )
+    with connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO voice_models (
+                id, voice_id, engine_id, model_name, model_path, index_path,
+                config_path, dataset_path, training_seconds, dataset_seconds,
+                status, created_at, updated_at, metadata_json, archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.id,
+                record.voice_id,
+                record.engine_id,
+                record.model_name,
+                record.model_path,
+                record.index_path,
+                record.config_path,
+                record.dataset_path,
+                record.training_seconds,
+                record.dataset_seconds,
+                record.status,
+                record.created_at,
+                record.updated_at,
+                record.metadata_json,
+                int(record.archived),
+            ),
+        )
+    return record
+
+
+def list_voice_models(
+    voice_id: str,
+    engine_id: str | None = None,
+    include_archived: bool = False,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> list[VoiceModel]:
+    init_library(db_path)
+    clauses = ["voice_id = ?"]
+    params: list[object] = [voice_id]
+    if engine_id:
+        clauses.append("engine_id = ?")
+        params.append(engine_id)
+    if not include_archived:
+        clauses.append("archived = 0")
+    where = " AND ".join(clauses)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            f"SELECT * FROM voice_models WHERE {where} ORDER BY updated_at DESC",
+            params,
+        ).fetchall()
+    return [_voice_model_from_row(row) for row in rows]
+
+
+def get_voice_model(
+    voice_id: str,
+    engine_id: str = "rvc_mlx",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> VoiceModel | None:
+    init_library(db_path)
+    with connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM voice_models
+            WHERE voice_id = ? AND engine_id = ? AND status = 'ready' AND archived = 0
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (voice_id, engine_id),
+        ).fetchone()
+    return _voice_model_from_row(row) if row else None
+
+
+def update_voice_model_status(
+    model_id: str,
+    status: str,
+    model_path: Path | None = None,
+    index_path: Path | None = None,
+    config_path: Path | None = None,
+    training_seconds: float | None = None,
+    metadata: dict[str, object] | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> VoiceModel:
+    init_library(db_path)
+    updates = ["status = ?", "updated_at = ?"]
+    params: list[object] = [status, utc_now()]
+    optional = {
+        "model_path": str(model_path) if model_path else None,
+        "index_path": str(index_path) if index_path else None,
+        "config_path": str(config_path) if config_path else None,
+        "training_seconds": training_seconds,
+        "metadata_json": json.dumps(metadata, ensure_ascii=False) if metadata is not None else None,
+    }
+    for column, value in optional.items():
+        if value is not None:
+            updates.append(f"{column} = ?")
+            params.append(value)
+    params.append(model_id)
+    with connect(db_path) as conn:
+        conn.execute(f"UPDATE voice_models SET {', '.join(updates)} WHERE id = ?", params)
+        row = conn.execute("SELECT * FROM voice_models WHERE id = ?", (model_id,)).fetchone()
+    if not row:
+        raise KeyError(f"Voice model not found: {model_id}")
+    return _voice_model_from_row(row)
+
+
+def archive_voice_model(model_id: str, db_path: Path = DEFAULT_DB_PATH) -> None:
+    init_library(db_path)
+    with connect(db_path) as conn:
+        conn.execute("UPDATE voice_models SET archived = 1, updated_at = ? WHERE id = ?", (utc_now(), model_id))
 
 
 def list_voice_profiles(

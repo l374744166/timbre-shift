@@ -541,6 +541,19 @@ def page_html() -> str:
             </label>
           </div>
         </div>
+        <div class="field">
+          <label>转换引擎</label>
+          <div class="radio-group two-column">
+            <label class="option">
+              <input type="radio" name="engine_id" value="seedvc" checked>
+              <span><strong>Seed-VC</strong><span>零样本，不需要训练，适合试听和当前主流程</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="engine_id" value="rvc_mlx">
+              <span><strong>RVC-MLX 实验</strong><span>需要已训练模型，适合长期音色复用</span></span>
+            </label>
+          </div>
+        </div>
       </section>
       <div class="actions">
         <button id="submit" type="submit">生成</button>
@@ -633,16 +646,18 @@ def page_html() -> str:
         ? diagnostics.suggestions.slice(0, 2).join("；")
         : "-";
       const items = [
+        ["转换引擎", data.engine_name || data.engine_id || "Seed-VC"],
         ["总用时", `${formatNumber(data.total_seconds)} 秒`],
         ["Demucs", `${formatNumber(data.demucs_seconds)} 秒`],
-        ["Seed-VC", `${formatNumber(data.seedvc_seconds)} 秒`],
+        ["转换", `${formatNumber(data.convert_seconds || data.seedvc_seconds)} 秒`],
         ["分段换声", data.seedvc_chunked_used ? `${data.seedvc_chunk_seconds || "-"}秒 / ${data.seedvc_chunk_workers || 1}路` : (data.seedvc_chunked_attempted ? "已回退整段" : "未启用")],
         ["有效人声", `${formatNumber(data.active_vocal_seconds)} 秒`],
         ["人声占比", data.active_ratio == null ? "-" : `${formatNumber(data.active_ratio * 100)}%`],
-        ["Seed-VC RTF", formatNumber(data.seedvc_rtf, 2)],
+        ["转换 RTF", formatNumber(data.seedvc_rtf, 2)],
         ["MPS", data.mps_used ? "是" : "否"],
         ["库分离命中", data.library_song_stems_hit ? "是" : "否"],
         ["Seed-VC缓存", data.seedvc_cache_hit ? "命中" : "未命中"],
+        ["RVC-MLX模型", data.rvc_mlx_status || "未使用"],
         ["诊断", diagnostics.most_likely_issue || "未生成"],
         ["诊断置信度", diagnostics.confidence || "-"],
         ["建议", suggestions],
@@ -1036,4 +1051,3 @@ def page_html() -> str:
 </body>
 </html>"""
     return body.replace("__VOICE_OPTIONS__", voice_options)
-

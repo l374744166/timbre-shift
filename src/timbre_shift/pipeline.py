@@ -25,12 +25,14 @@ from .demucs import separate_vocals
 from .diagnostics import AnalyzerContext, analyze_generation
 from .library import (
     best_voice_reference,
+    get_voice_model,
     get_song,
     get_voice_profile,
     save_song_to_library,
     save_voice_to_library,
     update_song_stems,
 )
+from .engines import get_engine
 from .pipeline_config import (
     PRESETS,
     EnvironmentReport,
@@ -199,10 +201,19 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "song_title": None,
         "render_mode": options.render_mode,
         "source_mode": options.source_mode,
+        "engine_id": options.engine_id,
+        "engine_name": None,
+        "engine_requires_training": False,
+        "engine_available": False,
         "library_voice_hit": False,
         "library_song_stems_hit": False,
         "demucs_cache_hit": False,
         "seedvc_cache_hit": False,
+        "rvc_mlx_cache_hit": False,
+        "rvc_mlx_model_path": None,
+        "rvc_mlx_dataset_seconds": None,
+        "rvc_mlx_index_path": None,
+        "rvc_mlx_status": None,
         "seedvc_chunked_attempted": False,
         "seedvc_chunked_used": False,
         "seedvc_chunk_seconds": 0,
@@ -230,6 +241,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "mps_used": False,
         "seedvc_device": None,
         "seedvc_cpu_fallback_used": False,
+        "convert_seconds": 0.0,
         "output_wav": None,
         "output_mp3": None,
         "diagnostics": None,
@@ -239,6 +251,11 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
     update("检查输入文件", 3)
     validate_inputs(options)
     preset = resolve_preset(options)
+    engine = get_engine(options.engine_id)
+    engine_check = engine.check()
+    metrics["engine_name"] = engine.name
+    metrics["engine_requires_training"] = engine.requires_training
+    metrics["engine_available"] = bool(engine_check.get("available"))
     actual_device = options.device or preset.device
     metrics["mps_requested"] = actual_device == "mps"
 
@@ -424,51 +441,83 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
     if metrics["active_vocal_seconds"] is None:
         metrics["active_vocal_seconds"] = probe_duration(source_vocal)
 
-    update(f"转换为目标音色（{preset.diffusion_steps} steps，{cache_label}）", 70)
-    allow_cpu_fallback = preset.clip_seconds is not None and preset.clip_seconds <= 15
-    chunk_seconds, chunk_workers = _seedvc_chunk_settings(options, preset)
-    metrics["seedvc_chunk_seconds"] = chunk_seconds
-    metrics["seedvc_chunk_workers"] = chunk_workers
-    seedvc_result = None
-    if chunk_seconds:
-        metrics["seedvc_chunked_attempted"] = True
-        try:
-            update(f"分段换声（{chunk_seconds}秒 / {chunk_workers}路）", 70)
-            seedvc_result = _convert_seedvc_chunked(
+    update(f"转换为目标音色（{engine.name}，{cache_label}）", 70)
+    if options.engine_id == "seedvc":
+        allow_cpu_fallback = preset.clip_seconds is not None and preset.clip_seconds <= 15
+        chunk_seconds, chunk_workers = _seedvc_chunk_settings(options, preset)
+        metrics["seedvc_chunk_seconds"] = chunk_seconds
+        metrics["seedvc_chunk_workers"] = chunk_workers
+        seedvc_result = None
+        if chunk_seconds:
+            metrics["seedvc_chunked_attempted"] = True
+            try:
+                update(f"分段换声（{chunk_seconds}秒 / {chunk_workers}路）", 70)
+                seedvc_result = _convert_seedvc_chunked(
+                    options=options,
+                    preset=preset,
+                    source_vocal=source_vocal,
+                    prepared_voice=prepared_voice,
+                    converted_dir=converted_dir,
+                    actual_device=actual_device,
+                    chunk_seconds=chunk_seconds,
+                    workers=chunk_workers,
+                )
+                metrics["seedvc_chunked_used"] = True
+            except Exception as exc:
+                metrics["seedvc_chunk_error"] = str(exc)
+                update("分段换声失败，回退整段换声", 70)
+
+        if seedvc_result is None:
+            seedvc_result = _convert_seedvc_whole(
                 options=options,
                 preset=preset,
                 source_vocal=source_vocal,
                 prepared_voice=prepared_voice,
                 converted_dir=converted_dir,
                 actual_device=actual_device,
-                chunk_seconds=chunk_seconds,
-                workers=chunk_workers,
+                allow_cpu_fallback=allow_cpu_fallback,
             )
-            metrics["seedvc_chunked_used"] = True
-        except Exception as exc:
-            metrics["seedvc_chunk_error"] = str(exc)
-            update("分段换声失败，回退整段换声", 70)
-
-    if seedvc_result is None:
-        seedvc_result = _convert_seedvc_whole(
-            options=options,
-            preset=preset,
+        converted_vocal = seedvc_result.output
+        metrics["seedvc_cache_hit"] = seedvc_result.cache_hit
+        metrics["seedvc_seconds"] = seedvc_result.elapsed_seconds
+        metrics["seedvc_device"] = seedvc_result.device_used
+        metrics["mps_used"] = seedvc_result.device_used == "mps"
+        metrics["seedvc_cpu_fallback_used"] = seedvc_result.cpu_fallback_used
+        metrics["convert_seconds"] = seedvc_result.elapsed_seconds
+    elif options.engine_id == "rvc_mlx":
+        if not voice_profile:
+            raise ValueError("RVC-MLX 需要选择一个已保存音色")
+        voice_model = get_voice_model(voice_profile.id, engine_id="rvc_mlx", db_path=options.library_db_path)
+        if not voice_model:
+            raise FileNotFoundError("RVC-MLX 模型不存在，请先准备数据并训练。")
+        if not engine.is_available():
+            missing = ", ".join(str(item) for item in engine_check.get("missing", []))
+            raise RuntimeError(f"RVC-MLX 未安装或未配置：{missing}")
+        metrics["rvc_mlx_model_path"] = voice_model.model_path
+        metrics["rvc_mlx_dataset_seconds"] = voice_model.dataset_seconds
+        metrics["rvc_mlx_index_path"] = voice_model.index_path
+        metrics["rvc_mlx_status"] = voice_model.status
+        engine_result = engine.convert(
             source_vocal=source_vocal,
-            prepared_voice=prepared_voice,
-            converted_dir=converted_dir,
-            actual_device=actual_device,
-            allow_cpu_fallback=allow_cpu_fallback,
+            target_voice_or_model=Path(voice_model.model_path),
+            output_dir=converted_dir / "rvc_mlx",
+            options={
+                "cache_dir": options.cache_dir,
+                "index_path": voice_model.index_path,
+                "voice_model_id": voice_model.id,
+            },
         )
-    converted_vocal = seedvc_result.output
+        converted_vocal = engine_result.converted_vocal_path
+        metrics["rvc_mlx_cache_hit"] = engine_result.cache_hit
+        metrics["convert_seconds"] = engine_result.seconds
+        metrics["seedvc_device"] = engine_result.device
+        metrics["mps_used"] = False
+    else:
+        raise ValueError(f"Unsupported conversion engine: {options.engine_id}")
     raw_converted_vocal = converted_vocal
-    metrics["seedvc_cache_hit"] = seedvc_result.cache_hit
-    metrics["seedvc_seconds"] = seedvc_result.elapsed_seconds
-    metrics["seedvc_device"] = seedvc_result.device_used
-    metrics["mps_used"] = seedvc_result.device_used == "mps"
-    metrics["seedvc_cpu_fallback_used"] = seedvc_result.cpu_fallback_used
     active_for_rtf = metrics["active_vocal_seconds"] or probe_duration(source_vocal) or 0
     metrics["seedvc_rtf"] = (
-        seedvc_result.elapsed_seconds / active_for_rtf
+        float(metrics["convert_seconds"]) / active_for_rtf
         if active_for_rtf
         else None
     )

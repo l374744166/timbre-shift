@@ -40,6 +40,7 @@ audio tools:
 - `ffmpeg` for audio normalization and final mixing
 - `demucs` for vocal/backing separation
 - `Seed-VC` for zero-shot singing voice conversion
+- `RVC-MLX` as an experimental trained-model backend
 
 Install the local package after creating a virtual environment:
 
@@ -54,6 +55,8 @@ Check your local environment:
 ```bash
 timbre-shift check --seed-vc-dir vendor/seed-vc
 timbre-shift check-mps
+timbre-shift engines list
+timbre-shift rvc-mlx check
 ```
 
 Start the local upload page:
@@ -73,6 +76,49 @@ timbre-shift demo \
 
 The final mix is written to `outputs/final.wav`. The web app also writes
 `outputs/web/final.mp3` and `outputs/web/metrics.json`.
+
+## Conversion Engines
+
+Timbre Shift keeps Seed-VC as the stable default and adds RVC-MLX as an
+experimental backend.
+
+Seed-VC:
+
+- zero-shot conversion
+- uses short reference clips such as 8, 16, 20, or 25 seconds
+- does not require training
+- best for quick previews and the current stable workflow
+
+RVC-MLX:
+
+- experimental Apple Silicon backend
+- requires a trained voice model
+- intended for one voice profile with multiple clean samples
+- useful when one voice will be reused across many songs
+- not guaranteed to sound better than Seed-VC; benchmark and listening tests are required
+
+Recommended RVC-MLX training material:
+
+- minimum 5 minutes of clean vocal for testing
+- 10 minutes or more is recommended
+- 10 to 30 minutes is usually more stable
+- cover low, mid, high notes, soft singing, strong singing, fast phrases, and long notes
+- avoid backing music, reverb, harmonies, and heavy compression when possible
+
+Current RVC-MLX status: the project has engine detection, dataset preparation,
+model records, cache-key helpers, and wrapper entry points. The actual training
+and inference command is intentionally left adapter-driven because community
+RVC-MLX implementations differ. Configure a concrete implementation with
+`RVC_MLX_COMMAND` or `RVC_MLX_REPO` before using the engine.
+
+RVC-MLX commands:
+
+```bash
+timbre-shift rvc-mlx check
+timbre-shift rvc-mlx prepare-dataset --voice-id voice_xxx
+timbre-shift rvc-mlx train --voice-id voice_xxx
+timbre-shift rvc-mlx convert --voice-id voice_xxx --source-vocal vocals.wav --output outputs/rvc.wav
+```
 
 ## M2 Max Modes
 
