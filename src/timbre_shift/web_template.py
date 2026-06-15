@@ -621,7 +621,7 @@ def page_html() -> str:
           <h2>4. 生成</h2>
           <span class="hint">默认整首模式</span>
         </div>
-        <div class="field">
+        <div class="field" id="renderModeField">
           <label>模式</label>
           <div class="radio-group two-column">
             <label class="option">
@@ -787,6 +787,7 @@ def page_html() -> str:
     const voiceSectionTitle = document.getElementById("voiceSectionTitle");
     const songSectionTitle = document.getElementById("songSectionTitle");
     const voiceHint = document.getElementById("voiceHint");
+    const renderModeField = document.getElementById("renderModeField");
     const voiceModelField = document.getElementById("voiceModelField");
     const voiceModel = document.getElementById("voiceModel");
     const voiceModelHint = document.getElementById("voiceModelHint");
@@ -1112,14 +1113,20 @@ def page_html() -> str:
       engineHint.textContent = usingRvc ? "RVC 需要先训练或选择模型" : "Seed-VC 可直接生成";
       voiceSectionTitle.textContent = usingRvc ? "2. 训练音色" : "2. 目标音色";
       songSectionTitle.textContent = usingRvc ? "3. 生成歌曲" : "3. 歌曲";
-      voiceUploadField.style.display = "grid";
-      voiceSourceField.style.display = "grid";
-      voiceNameField.style.display = "grid";
-      voiceSaveActions.style.display = "grid";
+      renderModeField.style.display = usingRvc ? "none" : "grid";
+      if (usingRvc) {
+        const defaultMode = form.querySelector('input[name="mode"][value="m2max_hq_30"]');
+        if (defaultMode) defaultMode.checked = true;
+      }
+      const showVoiceUpload = !usingRvc || !usingSavedVoice;
+      voiceUploadField.style.display = showVoiceUpload ? "grid" : "none";
+      voiceSourceField.style.display = showVoiceUpload ? "grid" : "none";
+      voiceNameField.style.display = showVoiceUpload ? "grid" : "none";
+      voiceSaveActions.style.display = showVoiceUpload ? "grid" : "none";
       saveVoiceButton.style.display = usingSavedVoice ? "none" : "inline-flex";
-      addVoiceSampleButton.style.display = usingSavedVoice ? "inline-flex" : "none";
+      addVoiceSampleButton.style.display = usingSavedVoice && !usingRvc ? "inline-flex" : "none";
       voiceHint.textContent = usingRvc
-        ? (usingSavedVoice ? "选择模型或继续添加训练素材" : "先选择或保存一个要训练的音色")
+        ? (usingSavedVoice ? "选择这个音色的 RVC 模型，训练素材在弹窗里管理" : "先选择或保存一个要训练的音色")
         : (usingSavedVoice ? "使用这个音色生成" : "选择已有音色，或上传新声音");
       renderVoiceFileSummary();
       songUploadField.style.display = "grid";
