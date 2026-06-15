@@ -21,8 +21,10 @@ from .demucs import separate_vocals
 from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
+    add_voice_sample_to_profile,
     archive_voice_profile,
     init_library,
+    list_voice_samples,
     list_voice_profiles,
     save_voice_to_library,
 )
@@ -473,6 +475,7 @@ def page_html() -> str:
             <input id="voiceName" name="voice_name" type="text" placeholder="例如：我的声音">
           </div>
           <button class="secondary" id="saveVoiceButton" type="button">保存音色</button>
+          <button class="secondary" id="addVoiceSampleButton" type="button">添加素材</button>
         </div>
         <div id="voiceSaveMessage" class="message"></div>
       </section>
@@ -565,6 +568,7 @@ def page_html() -> str:
     const voiceNameField = document.getElementById("voiceNameField");
     const voiceName = document.getElementById("voiceName");
     const saveVoiceButton = document.getElementById("saveVoiceButton");
+    const addVoiceSampleButton = document.getElementById("addVoiceSampleButton");
     const deleteVoiceButton = document.getElementById("deleteVoiceButton");
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
@@ -625,12 +629,14 @@ def page_html() -> str:
 
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
-      voiceUploadField.style.display = usingSavedVoice ? "none" : "grid";
-      voiceSourceField.style.display = usingSavedVoice ? "none" : "grid";
-      voiceNameField.style.display = usingSavedVoice ? "none" : "grid";
-      voiceSaveActions.style.display = usingSavedVoice ? "none" : "grid";
+      voiceUploadField.style.display = "grid";
+      voiceSourceField.style.display = "grid";
+      voiceNameField.style.display = "grid";
+      voiceSaveActions.style.display = "grid";
+      saveVoiceButton.style.display = usingSavedVoice ? "none" : "inline-flex";
+      addVoiceSampleButton.style.display = usingSavedVoice ? "inline-flex" : "none";
       deleteVoiceButton.disabled = !usingSavedVoice;
-      voiceHint.textContent = usingSavedVoice ? "正在使用已保存音色" : "选择已有音色，或上传新声音";
+      voiceHint.textContent = usingSavedVoice ? "可继续添加素材到当前音色" : "选择已有音色，或上传新声音";
       songUploadField.style.display = "grid";
       songHint.textContent = "上传要换声的音频";
     }
@@ -778,6 +784,40 @@ def page_html() -> str:
       }
     });
 
+    addVoiceSampleButton.addEventListener("click", async () => {
+      const id = voiceProfile.value;
+      voiceSaveMessage.className = "message";
+      voiceSaveMessage.textContent = "添加中...";
+      addVoiceSampleButton.disabled = true;
+      try {
+        if (!id) {
+          throw new Error("先选择一个已保存音色");
+        }
+        if (!document.getElementById("voice").files.length) {
+          throw new Error("先选择一个声音素材");
+        }
+        const body = new FormData();
+        body.append("voice_profile_id", id);
+        body.append("voice", document.getElementById("voice").files[0]);
+        body.append("voice_name", voiceName.value || document.getElementById("voice").files[0].name);
+        body.append("voice_source_type", form.elements["voice_source_type"].value);
+        const response = await fetch("/api/add-voice-sample", { method: "POST", body });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "添加失败");
+        }
+        voiceSaveMessage.textContent = `已添加素材，总数 ${data.sample_count}`;
+        voiceName.value = "";
+        document.getElementById("voice").value = "";
+      } catch (error) {
+        voiceSaveMessage.className = "message error";
+        voiceSaveMessage.textContent = error.message;
+      } finally {
+        addVoiceSampleButton.disabled = false;
+        syncLibraryControls();
+      }
+    });
+
     deleteVoiceButton.addEventListener("click", async () => {
       const id = voiceProfile.value;
       const selectedOption = voiceProfile.options[voiceProfile.selectedIndex];
@@ -857,6 +897,60 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if self.path == "/api/add-voice-sample":
+            try:
+                voice_path, voice_name, voice_source_type, voice_profile_id = self.read_voice_sample_upload()
+                if not voice_profile_id:
+                    raise ValueError("先选择一个已保存音色")
+                source_type = "upload_voice"
+                clean_path = voice_path
+                if voice_source_type == "mixed_voice":
+                    PROGRESS.reset("高质量分离素材人声", 5, "running")
+                    separated = separate_vocals(
+                        voice_path,
+                        output_dir=ROOT / "data" / "processed" / "web" / "voice_samples",
+                        model="htdemucs_ft",
+                        cache_dir=ROOT / "data" / "cache",
+                        overlap=0.25,
+                        shifts=0,
+                    )
+                    clean_path = separated.vocals
+                    source_type = "separated_compact_voice"
+                    try:
+                        PROGRESS.update("筛选有效素材人声片段", 70)
+                        compact = compact_for_conversion(
+                            separated.vocals,
+                            clean_path.parent / "compact_voice.wav",
+                        )
+                        clean_path = compact.audio
+                    except ValueError:
+                        source_type = "separated_voice"
+                PROGRESS.update("添加素材并刷新参考音频", 85)
+                sample = add_voice_sample_to_profile(
+                    voice_id=voice_profile_id,
+                    input_audio=voice_path,
+                    clean_audio=clean_path,
+                    name=voice_name,
+                    source_type=source_type,
+                    library_dir=DEFAULT_LIBRARY_DIR,
+                    db_path=DEFAULT_DB_PATH,
+                )
+                sample_count = len(list_voice_samples(voice_profile_id, db_path=DEFAULT_DB_PATH))
+                PROGRESS.update("素材已添加", 100, "completed")
+                self.send_json(
+                    {
+                        "id": sample.id,
+                        "voice_profile_id": voice_profile_id,
+                        "sample_count": sample_count,
+                        "quality_score": sample.quality_score,
+                        "noise_score": sample.noise_score,
+                        "message": "素材已添加",
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
         if self.path == "/api/delete-voice":
             try:
                 fields = self.read_form_fields()
@@ -1100,6 +1194,43 @@ class AppHandler(BaseHTTPRequestHandler):
         if voice_source_type not in {"clean_voice", "mixed_voice"}:
             voice_source_type = "clean_voice"
         return path, voice_name, voice_source_type
+
+    def read_voice_sample_upload(self) -> Tuple[Path, str, str, str]:
+        content_type = self.headers.get("content-type", "")
+        if not content_type.startswith("multipart/form-data"):
+            raise ValueError("请上传声音素材")
+
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+        )
+        item = form["voice"] if "voice" in form else None
+        if item is None or not getattr(item, "filename", ""):
+            raise ValueError("先选择一个声音素材")
+
+        timestamp = str(int(time.time()))
+        target_dir = UPLOAD_ROOT / timestamp
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = safe_filename(item.filename)
+        path = target_dir / f"voice-sample-{filename}"
+        with path.open("wb") as output:
+            while True:
+                chunk = item.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+
+        raw_name = str(form.getfirst("voice_name", "")).strip()
+        voice_name = raw_name or Path(filename).stem or "声音素材"
+        voice_source_type = str(form.getfirst("voice_source_type", "clean_voice"))
+        if voice_source_type not in {"clean_voice", "mixed_voice"}:
+            voice_source_type = "clean_voice"
+        voice_profile_id = str(form.getfirst("voice_profile_id", "")).strip()
+        return path, voice_name, voice_source_type, voice_profile_id
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")

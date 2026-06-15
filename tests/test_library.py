@@ -11,6 +11,8 @@ from timbre_shift.library import (
     list_songs,
     list_voice_profiles,
     save_song_to_library,
+    add_voice_sample_to_profile,
+    list_voice_samples,
     save_voice_to_library,
     update_song_stems,
 )
@@ -36,6 +38,7 @@ class LibraryTests(unittest.TestCase):
 
             with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
                 patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
                 patch("timbre_shift.library.probe_duration", return_value=5.0):
                 allowed = save_voice_to_library(
                     audio,
@@ -73,6 +76,39 @@ class LibraryTests(unittest.TestCase):
 
             self.assertNotEqual(first.id, second.id)
             self.assertEqual(len(list_voice_profiles(db_path=db_path)), 2)
+
+    def test_voice_profile_can_collect_multiple_samples(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "library.db"
+            first_audio = root / "first.wav"
+            second_audio = root / "second.wav"
+            first_audio.write_bytes(b"first")
+            second_audio.write_bytes(b"second")
+
+            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
+                patch("timbre_shift.library.probe_duration", return_value=5.0):
+                voice = save_voice_to_library(
+                    first_audio,
+                    "Voice",
+                    rights_status="own_voice",
+                    allowed_as_target=True,
+                    library_dir=root / "library",
+                    db_path=db_path,
+                )
+                sample = add_voice_sample_to_profile(
+                    voice.id,
+                    second_audio,
+                    name="Second",
+                    library_dir=root / "library",
+                    db_path=db_path,
+                )
+
+            samples = list_voice_samples(voice.id, db_path=db_path)
+            self.assertEqual(len(samples), 2)
+            self.assertEqual(sample.voice_id, voice.id)
 
     def test_save_song_and_update_stems(self):
         with TemporaryDirectory() as tmp:

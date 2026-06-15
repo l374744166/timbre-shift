@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -12,6 +13,7 @@ from uuid import uuid4
 
 from .audio import normalize_audio, probe_duration
 from .commands import as_strs, run_command
+from .diagnostics import AnalyzerContext, analyze_generation
 
 
 DEFAULT_LIBRARY_DIR = Path("data/library")
@@ -40,6 +42,25 @@ class VoiceProfile:
     source_song_id: str | None
     created_at: str
     updated_at: str
+    archived: bool = False
+
+
+@dataclass(frozen=True)
+class VoiceSample:
+    id: str
+    voice_id: str
+    name: str | None
+    raw_audio_path: str
+    clean_audio_path: str | None
+    source_type: str
+    sha256: str
+    duration_seconds: float | None
+    sample_rate: int | None
+    channels: int | None
+    quality_score: float | None
+    noise_score: float | None
+    notes: str | None
+    created_at: str
     archived: bool = False
 
 
@@ -148,6 +169,23 @@ def init_library(db_path: Path = DEFAULT_DB_PATH) -> None:
                 finished_at TEXT,
                 error_message TEXT
             );
+            CREATE TABLE IF NOT EXISTS voice_samples (
+                id TEXT PRIMARY KEY,
+                voice_id TEXT NOT NULL,
+                name TEXT,
+                raw_audio_path TEXT NOT NULL,
+                clean_audio_path TEXT,
+                source_type TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                duration_seconds REAL,
+                sample_rate INTEGER,
+                channels INTEGER,
+                quality_score REAL,
+                noise_score REAL,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                archived INTEGER NOT NULL DEFAULT 0
+            );
             """
         )
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(songs)")}
@@ -202,6 +240,26 @@ def _song_from_row(row: sqlite3.Row) -> SongRecord:
     )
 
 
+def _voice_sample_from_row(row: sqlite3.Row) -> VoiceSample:
+    return VoiceSample(
+        id=row["id"],
+        voice_id=row["voice_id"],
+        name=row["name"],
+        raw_audio_path=row["raw_audio_path"],
+        clean_audio_path=row["clean_audio_path"],
+        source_type=row["source_type"],
+        sha256=row["sha256"],
+        duration_seconds=row["duration_seconds"],
+        sample_rate=row["sample_rate"],
+        channels=row["channels"],
+        quality_score=row["quality_score"],
+        noise_score=row["noise_score"],
+        notes=row["notes"],
+        created_at=row["created_at"],
+        archived=bool(row["archived"]),
+    )
+
+
 def _existing_voice_by_hash(db_path: Path, file_hash: str) -> VoiceProfile | None:
     with connect(db_path) as conn:
         row = conn.execute(
@@ -248,6 +306,39 @@ def _make_preview_mp3(source: Path, output: Path) -> Path:
 
 def _metadata_audio_defaults(path: Path) -> tuple[float | None, int | None, int | None]:
     return probe_duration(path), None, None
+
+
+def _concat_audio_files(sources: list[Path], output: Path) -> Path:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not sources:
+        raise ValueError("No audio files to combine")
+    if len(sources) == 1:
+        shutil.copy2(sources[0], output)
+        return output
+    command = ["ffmpeg", "-y"]
+    for source in sources:
+        command.extend(["-i", source])
+    labels = "".join(f"[{index}:a]" for index in range(len(sources)))
+    command.extend(
+        [
+            "-filter_complex",
+            f"{labels}concat=n={len(sources)}:v=0:a=1[out]",
+            "-map",
+            "[out]",
+            output,
+        ]
+    )
+    run_command(as_strs(command))
+    return output
+
+
+def _score_quality(report: dict[str, object]) -> tuple[float, float]:
+    issues = [item for item in report.get("issues", []) if isinstance(item, dict)]
+    weights = {"high": 0.25, "medium": 0.14, "low": 0.07}
+    penalty = sum(weights.get(str(issue.get("confidence")), 0.05) for issue in issues)
+    quality_score = max(0.0, min(1.0, 1.0 - penalty))
+    noise_score = min(1.0, penalty)
+    return quality_score, noise_score
 
 
 def create_voice_profile(
@@ -382,6 +473,195 @@ def save_voice_to_library(
         voice_id=voice_id,
     )
     _write_metadata(voice_dir / "metadata.json", asdict(record))
+    add_voice_sample_to_profile(
+        voice_id=record.id,
+        input_audio=input_audio,
+        clean_audio=raw_audio,
+        name=name,
+        source_type=source_type,
+        library_dir=library_dir,
+        db_path=db_path,
+        require_allowed_target=False,
+    )
+    return record
+
+
+def create_voice_sample_record(
+    voice_id: str,
+    name: str | None,
+    raw_audio_path: Path,
+    clean_audio_path: Path | None,
+    source_type: str,
+    sha256: str,
+    duration_seconds: float | None = None,
+    sample_rate: int | None = None,
+    channels: int | None = None,
+    quality_score: float | None = None,
+    noise_score: float | None = None,
+    notes: str | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+    sample_id: str | None = None,
+) -> VoiceSample:
+    init_library(db_path)
+    now = utc_now()
+    record = VoiceSample(
+        id=sample_id or make_id("sample"),
+        voice_id=voice_id,
+        name=name,
+        raw_audio_path=str(raw_audio_path),
+        clean_audio_path=str(clean_audio_path) if clean_audio_path else None,
+        source_type=source_type,
+        sha256=sha256,
+        duration_seconds=duration_seconds,
+        sample_rate=sample_rate,
+        channels=channels,
+        quality_score=quality_score,
+        noise_score=noise_score,
+        notes=notes,
+        created_at=now,
+    )
+    with connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO voice_samples (
+                id, voice_id, name, raw_audio_path, clean_audio_path, source_type,
+                sha256, duration_seconds, sample_rate, channels, quality_score,
+                noise_score, notes, created_at, archived
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.id,
+                record.voice_id,
+                record.name,
+                record.raw_audio_path,
+                record.clean_audio_path,
+                record.source_type,
+                record.sha256,
+                record.duration_seconds,
+                record.sample_rate,
+                record.channels,
+                record.quality_score,
+                record.noise_score,
+                record.notes,
+                record.created_at,
+                int(record.archived),
+            ),
+        )
+    return record
+
+
+def list_voice_samples(
+    voice_id: str,
+    include_archived: bool = False,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> list[VoiceSample]:
+    init_library(db_path)
+    where = "WHERE voice_id = ?"
+    if not include_archived:
+        where += " AND archived = 0"
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            f"SELECT * FROM voice_samples {where} ORDER BY created_at ASC",
+            (voice_id,),
+        ).fetchall()
+    return [_voice_sample_from_row(row) for row in rows]
+
+
+def refresh_voice_profile_references(
+    voice_id: str,
+    library_dir: Path = DEFAULT_LIBRARY_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> VoiceProfile:
+    profile = get_voice_profile(voice_id, db_path=db_path)
+    voice_dir = library_dir / "voices" / voice_id
+    samples = list_voice_samples(voice_id, db_path=db_path)
+    clean_sources = [
+        Path(sample.clean_audio_path or sample.raw_audio_path)
+        for sample in samples
+        if Path(sample.clean_audio_path or sample.raw_audio_path).exists()
+    ]
+    if not clean_sources:
+        return profile
+
+    raw_audio = _concat_audio_files(clean_sources, voice_dir / "raw.wav")
+    refs: dict[int, Path] = {}
+    for seconds in VOICE_REF_SECONDS:
+        refs[seconds] = normalize_audio(
+            raw_audio,
+            voice_dir / f"ref_{seconds}s.wav",
+            duration_seconds=seconds,
+        )
+    preview = _make_preview_mp3(refs[8], voice_dir / "preview.mp3")
+    duration, sample_rate, channels = _metadata_audio_defaults(raw_audio)
+    with connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE voices
+            SET raw_audio_path = ?, ref_8s_path = ?, ref_16s_path = ?,
+                ref_20s_path = ?, ref_25s_path = ?, preview_mp3_path = ?,
+                duration_seconds = ?, sample_rate = ?, channels = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                str(raw_audio),
+                str(refs[8]),
+                str(refs[16]),
+                str(refs[20]),
+                str(refs[25]),
+                str(preview),
+                duration,
+                sample_rate,
+                channels,
+                utc_now(),
+                voice_id,
+            ),
+        )
+    updated = get_voice_profile(voice_id, db_path=db_path)
+    _write_metadata(voice_dir / "metadata.json", asdict(updated))
+    return updated
+
+
+def add_voice_sample_to_profile(
+    voice_id: str,
+    input_audio: Path,
+    clean_audio: Path | None = None,
+    name: str | None = None,
+    source_type: str = "upload_voice",
+    library_dir: Path = DEFAULT_LIBRARY_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+    require_allowed_target: bool = True,
+) -> VoiceSample:
+    profile = get_voice_profile(voice_id, db_path=db_path)
+    if require_allowed_target and not profile.allowed_as_target:
+        raise PermissionError("这个音色没有授权为目标音色，不能继续添加素材")
+
+    sample_id = make_id("sample")
+    sample_dir = library_dir / "voices" / voice_id / "samples" / sample_id
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    raw_audio = normalize_audio(input_audio, sample_dir / "raw.wav")
+    clean_source = clean_audio or input_audio
+    clean_path = normalize_audio(clean_source, sample_dir / "clean.wav")
+    report = analyze_generation(AnalyzerContext(source_vocal=clean_path))
+    quality_score, noise_score = _score_quality(report)
+    duration, sample_rate, channels = _metadata_audio_defaults(clean_path)
+    record = create_voice_sample_record(
+        voice_id=voice_id,
+        name=name or input_audio.stem,
+        raw_audio_path=raw_audio,
+        clean_audio_path=clean_path,
+        source_type=source_type,
+        sha256=sha256_file(input_audio),
+        duration_seconds=duration,
+        sample_rate=sample_rate,
+        channels=channels,
+        quality_score=quality_score,
+        noise_score=noise_score,
+        notes=json.dumps(report, ensure_ascii=False),
+        db_path=db_path,
+        sample_id=sample_id,
+    )
+    _write_metadata(sample_dir / "metadata.json", asdict(record))
+    refresh_voice_profile_references(voice_id, library_dir=library_dir, db_path=db_path)
     return record
 
 
