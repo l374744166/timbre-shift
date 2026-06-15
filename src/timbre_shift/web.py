@@ -454,7 +454,7 @@ def page_html() -> str:
         </div>
         <div class="field" id="voiceUploadField">
           <label for="voice">上传声音</label>
-          <input id="voice" name="voice" type="file" accept="audio/*">
+          <input id="voice" name="voice" type="file" accept="audio/*" multiple>
         </div>
         <div class="field" id="voiceSourceField">
           <label>声音类型</label>
@@ -757,12 +757,13 @@ def page_html() -> str:
       voiceSaveMessage.textContent = "保存中...";
       saveVoiceButton.disabled = true;
       try {
-        if (!document.getElementById("voice").files.length) {
-          throw new Error("先选择一个声音样本");
+        const voiceFiles = document.getElementById("voice").files;
+        if (!voiceFiles.length) {
+          throw new Error("先选择一个或多个声音样本");
         }
         const body = new FormData();
-        body.append("voice", document.getElementById("voice").files[0]);
-        body.append("voice_name", voiceName.value || document.getElementById("voice").files[0].name);
+        Array.from(voiceFiles).forEach((file) => body.append("voice", file));
+        body.append("voice_name", voiceName.value || voiceFiles[0].name);
         body.append("voice_source_type", form.elements["voice_source_type"].value);
         const response = await fetch("/api/save-voice", { method: "POST", body });
         const data = await response.json();
@@ -774,7 +775,7 @@ def page_html() -> str:
         option.textContent = data.name;
         option.selected = true;
         voiceProfile.appendChild(option);
-        voiceSaveMessage.textContent = "已保存";
+        voiceSaveMessage.textContent = data.added_count > 1 ? `已保存，素材数 ${data.sample_count}` : "已保存";
         syncLibraryControls();
       } catch (error) {
         voiceSaveMessage.className = "message error";
@@ -793,13 +794,14 @@ def page_html() -> str:
         if (!id) {
           throw new Error("先选择一个已保存音色");
         }
-        if (!document.getElementById("voice").files.length) {
-          throw new Error("先选择一个声音素材");
+        const voiceFiles = document.getElementById("voice").files;
+        if (!voiceFiles.length) {
+          throw new Error("先选择一个或多个声音素材");
         }
         const body = new FormData();
         body.append("voice_profile_id", id);
-        body.append("voice", document.getElementById("voice").files[0]);
-        body.append("voice_name", voiceName.value || document.getElementById("voice").files[0].name);
+        Array.from(voiceFiles).forEach((file) => body.append("voice", file));
+        body.append("voice_name", voiceName.value || voiceFiles[0].name);
         body.append("voice_source_type", form.elements["voice_source_type"].value);
         const response = await fetch("/api/add-voice-sample", { method: "POST", body });
         const data = await response.json();
@@ -899,51 +901,54 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path == "/api/add-voice-sample":
             try:
-                voice_path, voice_name, voice_source_type, voice_profile_id = self.read_voice_sample_upload()
+                voice_uploads, voice_name, voice_source_type, voice_profile_id = self.read_voice_sample_upload()
                 if not voice_profile_id:
                     raise ValueError("先选择一个已保存音色")
-                source_type = "upload_voice"
-                clean_path = voice_path
-                if voice_source_type == "mixed_voice":
-                    PROGRESS.reset("高质量分离素材人声", 5, "running")
-                    separated = separate_vocals(
-                        voice_path,
-                        output_dir=ROOT / "data" / "processed" / "web" / "voice_samples",
-                        model="htdemucs_ft",
-                        cache_dir=ROOT / "data" / "cache",
-                        overlap=0.25,
-                        shifts=0,
-                    )
-                    clean_path = separated.vocals
-                    source_type = "separated_compact_voice"
-                    try:
-                        PROGRESS.update("筛选有效素材人声片段", 70)
-                        compact = compact_for_conversion(
-                            separated.vocals,
-                            clean_path.parent / "compact_voice.wav",
+                sample = None
+                for index, voice_path in enumerate(voice_uploads, start=1):
+                    source_type = "upload_voice"
+                    clean_path = voice_path
+                    if voice_source_type == "mixed_voice":
+                        PROGRESS.reset(f"高质量分离素材人声 {index}/{len(voice_uploads)}", 5, "running")
+                        separated = separate_vocals(
+                            voice_path,
+                            output_dir=ROOT / "data" / "processed" / "web" / "voice_samples",
+                            model="htdemucs_ft",
+                            cache_dir=ROOT / "data" / "cache",
+                            overlap=0.25,
+                            shifts=0,
                         )
-                        clean_path = compact.audio
-                    except ValueError:
-                        source_type = "separated_voice"
-                PROGRESS.update("添加素材并刷新参考音频", 85)
-                sample = add_voice_sample_to_profile(
-                    voice_id=voice_profile_id,
-                    input_audio=voice_path,
-                    clean_audio=clean_path,
-                    name=voice_name,
-                    source_type=source_type,
-                    library_dir=DEFAULT_LIBRARY_DIR,
-                    db_path=DEFAULT_DB_PATH,
-                )
+                        clean_path = separated.vocals
+                        source_type = "separated_compact_voice"
+                        try:
+                            PROGRESS.update(f"筛选有效素材人声片段 {index}/{len(voice_uploads)}", 70)
+                            compact = compact_for_conversion(
+                                separated.vocals,
+                                clean_path.parent / f"compact_voice_{index}.wav",
+                            )
+                            clean_path = compact.audio
+                        except ValueError:
+                            source_type = "separated_voice"
+                    PROGRESS.update(f"添加素材并刷新参考音频 {index}/{len(voice_uploads)}", 85)
+                    sample = add_voice_sample_to_profile(
+                        voice_id=voice_profile_id,
+                        input_audio=voice_path,
+                        clean_audio=clean_path,
+                        name=voice_name if len(voice_uploads) == 1 else f"{voice_name} {index}",
+                        source_type=source_type,
+                        library_dir=DEFAULT_LIBRARY_DIR,
+                        db_path=DEFAULT_DB_PATH,
+                    )
                 sample_count = len(list_voice_samples(voice_profile_id, db_path=DEFAULT_DB_PATH))
                 PROGRESS.update("素材已添加", 100, "completed")
                 self.send_json(
                     {
-                        "id": sample.id,
+                        "id": sample.id if sample else None,
                         "voice_profile_id": voice_profile_id,
                         "sample_count": sample_count,
-                        "quality_score": sample.quality_score,
-                        "noise_score": sample.noise_score,
+                        "added_count": len(voice_uploads),
+                        "quality_score": sample.quality_score if sample else None,
+                        "noise_score": sample.noise_score if sample else None,
                         "message": "素材已添加",
                     }
                 )
@@ -965,46 +970,67 @@ class AppHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/save-voice":
             try:
-                voice_path, voice_name, voice_source_type = self.read_voice_library_upload()
-                source_type = "upload_voice"
-                if voice_source_type == "mixed_voice":
-                    PROGRESS.reset("高质量分离音色人声", 5, "running")
-                    separated = separate_vocals(
-                        voice_path,
-                        output_dir=ROOT / "data" / "processed" / "web" / "voice_separated",
-                        model="htdemucs_ft",
-                        cache_dir=ROOT / "data" / "cache",
-                        overlap=0.25,
-                        shifts=0,
-                    )
-                    voice_path = separated.vocals
-                    source_type = "separated_compact_voice"
-                    try:
-                        PROGRESS.update("筛选有效音色人声片段", 70)
-                        compact = compact_for_conversion(
-                            separated.vocals,
-                            voice_path.parent / "compact_voice.wav",
+                voice_uploads, voice_name, voice_source_type = self.read_voice_library_upload()
+                prepared_uploads: list[tuple[Path, Path, str]] = []
+                for index, voice_path in enumerate(voice_uploads, start=1):
+                    source_type = "upload_voice"
+                    clean_path = voice_path
+                    if voice_source_type == "mixed_voice":
+                        PROGRESS.reset(f"高质量分离音色人声 {index}/{len(voice_uploads)}", 5, "running")
+                        separated = separate_vocals(
+                            voice_path,
+                            output_dir=ROOT / "data" / "processed" / "web" / "voice_separated",
+                            model="htdemucs_ft",
+                            cache_dir=ROOT / "data" / "cache",
+                            overlap=0.25,
+                            shifts=0,
                         )
-                        voice_path = compact.audio
-                    except ValueError:
-                        source_type = "separated_voice"
-                    PROGRESS.update("保存音色", 80)
+                        clean_path = separated.vocals
+                        source_type = "separated_compact_voice"
+                        try:
+                            PROGRESS.update(f"筛选有效音色人声片段 {index}/{len(voice_uploads)}", 70)
+                            compact = compact_for_conversion(
+                                separated.vocals,
+                                clean_path.parent / f"compact_voice_{index}.wav",
+                            )
+                            clean_path = compact.audio
+                        except ValueError:
+                            source_type = "separated_voice"
+                    prepared_uploads.append((voice_path, clean_path, source_type))
+                PROGRESS.update("保存音色", 80)
+                first_voice_path, first_clean_path, first_source_type = prepared_uploads[0]
                 profile = save_voice_to_library(
-                    input_audio=voice_path,
+                    input_audio=first_voice_path,
+                    clean_audio=first_clean_path,
                     name=voice_name,
                     description=None,
-                    source_type=source_type,
+                    source_type=first_source_type,
                     rights_status="own_voice",
                     allowed_as_target=True,
                     library_dir=DEFAULT_LIBRARY_DIR,
                     db_path=DEFAULT_DB_PATH,
                 )
+                for index, (extra_voice_path, extra_clean_path, extra_source_type) in enumerate(prepared_uploads[1:], start=2):
+                    percent = min(98, 80 + int(index / len(prepared_uploads) * 15))
+                    PROGRESS.update(f"追加音色素材 {index}/{len(prepared_uploads)}", percent)
+                    add_voice_sample_to_profile(
+                        voice_id=profile.id,
+                        input_audio=extra_voice_path,
+                        clean_audio=extra_clean_path,
+                        name=f"{voice_name} {index}",
+                        source_type=extra_source_type,
+                        library_dir=DEFAULT_LIBRARY_DIR,
+                        db_path=DEFAULT_DB_PATH,
+                    )
+                sample_count = len(list_voice_samples(profile.id, db_path=DEFAULT_DB_PATH))
                 PROGRESS.update("音色已保存", 100, "completed")
                 self.send_json(
                     {
                         "id": profile.id,
                         "name": profile.name,
-                        "source_type": source_type,
+                        "source_type": first_source_type,
+                        "sample_count": sample_count,
+                        "added_count": len(prepared_uploads),
                         "message": "音色已保存",
                     }
                 )
@@ -1159,7 +1185,26 @@ class AppHandler(BaseHTTPRequestHandler):
         )
         return {key: form.getfirst(key, "") for key in form.keys()}
 
-    def read_voice_library_upload(self) -> Tuple[Path, str, str]:
+    def _upload_items(self, form: cgi.FieldStorage, field: str) -> list[cgi.FieldStorage]:
+        raw_items = form[field] if field in form else []
+        items = raw_items if isinstance(raw_items, list) else [raw_items]
+        return [item for item in items if getattr(item, "filename", "")]
+
+    def _save_upload_items(self, items: list[cgi.FieldStorage], target_dir: Path, prefix: str) -> list[Path]:
+        paths: list[Path] = []
+        for index, item in enumerate(items, start=1):
+            filename = safe_filename(item.filename)
+            path = target_dir / f"{prefix}-{index}-{filename}"
+            with path.open("wb") as output:
+                while True:
+                    chunk = item.file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+            paths.append(path)
+        return paths
+
+    def read_voice_library_upload(self) -> Tuple[list[Path], str, str]:
         content_type = self.headers.get("content-type", "")
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("请上传声音样本")
@@ -1172,30 +1217,23 @@ class AppHandler(BaseHTTPRequestHandler):
                 "CONTENT_TYPE": content_type,
             },
         )
-        item = form["voice"] if "voice" in form else None
-        if item is None or not getattr(item, "filename", ""):
-            raise ValueError("先选择一个声音样本")
+        items = self._upload_items(form, "voice")
+        if not items:
+            raise ValueError("先选择一个或多个声音样本")
 
         timestamp = str(int(time.time()))
         target_dir = UPLOAD_ROOT / timestamp
         target_dir.mkdir(parents=True, exist_ok=True)
-        filename = safe_filename(item.filename)
-        path = target_dir / f"voice-library-{filename}"
-        with path.open("wb") as output:
-            while True:
-                chunk = item.file.read(1024 * 1024)
-                if not chunk:
-                    break
-                output.write(chunk)
+        paths = self._save_upload_items(items, target_dir, "voice-library")
 
         raw_name = str(form.getfirst("voice_name", "")).strip()
-        voice_name = raw_name or Path(filename).stem or "我的声音"
+        voice_name = raw_name or Path(safe_filename(items[0].filename)).stem or "我的声音"
         voice_source_type = str(form.getfirst("voice_source_type", "clean_voice"))
         if voice_source_type not in {"clean_voice", "mixed_voice"}:
             voice_source_type = "clean_voice"
-        return path, voice_name, voice_source_type
+        return paths, voice_name, voice_source_type
 
-    def read_voice_sample_upload(self) -> Tuple[Path, str, str, str]:
+    def read_voice_sample_upload(self) -> Tuple[list[Path], str, str, str]:
         content_type = self.headers.get("content-type", "")
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("请上传声音素材")
@@ -1208,29 +1246,22 @@ class AppHandler(BaseHTTPRequestHandler):
                 "CONTENT_TYPE": content_type,
             },
         )
-        item = form["voice"] if "voice" in form else None
-        if item is None or not getattr(item, "filename", ""):
-            raise ValueError("先选择一个声音素材")
+        items = self._upload_items(form, "voice")
+        if not items:
+            raise ValueError("先选择一个或多个声音素材")
 
         timestamp = str(int(time.time()))
         target_dir = UPLOAD_ROOT / timestamp
         target_dir.mkdir(parents=True, exist_ok=True)
-        filename = safe_filename(item.filename)
-        path = target_dir / f"voice-sample-{filename}"
-        with path.open("wb") as output:
-            while True:
-                chunk = item.file.read(1024 * 1024)
-                if not chunk:
-                    break
-                output.write(chunk)
+        paths = self._save_upload_items(items, target_dir, "voice-sample")
 
         raw_name = str(form.getfirst("voice_name", "")).strip()
-        voice_name = raw_name or Path(filename).stem or "声音素材"
+        voice_name = raw_name or Path(safe_filename(items[0].filename)).stem or "声音素材"
         voice_source_type = str(form.getfirst("voice_source_type", "clean_voice"))
         if voice_source_type not in {"clean_voice", "mixed_voice"}:
             voice_source_type = "clean_voice"
         voice_profile_id = str(form.getfirst("voice_profile_id", "")).strip()
-        return path, voice_name, voice_source_type, voice_profile_id
+        return paths, voice_name, voice_source_type, voice_profile_id
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")
