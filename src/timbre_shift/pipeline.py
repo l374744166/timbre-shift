@@ -216,6 +216,11 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "rvc_mlx_dataset_seconds": None,
         "rvc_mlx_index_path": None,
         "rvc_mlx_status": None,
+        "trained_model_cache_hit": False,
+        "trained_model_path": None,
+        "trained_model_dataset_seconds": None,
+        "trained_model_index_path": None,
+        "trained_model_status": None,
         "seedvc_chunked_attempted": False,
         "seedvc_chunked_used": False,
         "seedvc_chunk_seconds": 0,
@@ -486,34 +491,39 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         metrics["mps_used"] = seedvc_result.device_used == "mps"
         metrics["seedvc_cpu_fallback_used"] = seedvc_result.cpu_fallback_used
         metrics["convert_seconds"] = seedvc_result.elapsed_seconds
-    elif options.engine_id == "rvc_mlx":
+    elif engine.requires_training:
         if not voice_profile:
-            raise ValueError("RVC-MLX 需要选择一个已保存音色")
+            raise ValueError(f"{engine.name} 需要选择一个已保存音色")
         if options.voice_model_id:
             voice_model = get_voice_model_by_id(
                 options.voice_model_id,
                 voice_id=voice_profile.id,
-                engine_id="rvc_mlx",
+                engine_id=options.engine_id,
                 db_path=options.library_db_path,
             )
             if voice_model.status != "ready":
-                raise FileNotFoundError("选择的 RVC-MLX 模型还没有准备好。")
+                raise FileNotFoundError(f"选择的 {engine.name} 模型还没有准备好。")
         else:
-            voice_model = get_voice_model(voice_profile.id, engine_id="rvc_mlx", db_path=options.library_db_path)
+            voice_model = get_voice_model(voice_profile.id, engine_id=options.engine_id, db_path=options.library_db_path)
         if not voice_model:
-            raise FileNotFoundError("RVC-MLX 模型不存在，请先准备数据并训练。")
+            raise FileNotFoundError(f"{engine.name} 模型不存在，请先准备数据并训练。")
         metrics["voice_model_id"] = voice_model.id
         if not engine.is_available():
             missing = ", ".join(str(item) for item in engine_check.get("missing", []))
-            raise RuntimeError(f"RVC-MLX 未安装或未配置：{missing}")
-        metrics["rvc_mlx_model_path"] = voice_model.model_path
-        metrics["rvc_mlx_dataset_seconds"] = voice_model.dataset_seconds
-        metrics["rvc_mlx_index_path"] = voice_model.index_path
-        metrics["rvc_mlx_status"] = voice_model.status
+            raise RuntimeError(f"{engine.name} 未安装或未配置：{missing}")
+        metrics["trained_model_path"] = voice_model.model_path
+        metrics["trained_model_dataset_seconds"] = voice_model.dataset_seconds
+        metrics["trained_model_index_path"] = voice_model.index_path
+        metrics["trained_model_status"] = voice_model.status
+        if options.engine_id == "rvc_mlx":
+            metrics["rvc_mlx_model_path"] = voice_model.model_path
+            metrics["rvc_mlx_dataset_seconds"] = voice_model.dataset_seconds
+            metrics["rvc_mlx_index_path"] = voice_model.index_path
+            metrics["rvc_mlx_status"] = voice_model.status
         engine_result = engine.convert(
             source_vocal=source_vocal,
             target_voice_or_model=Path(voice_model.model_path),
-            output_dir=converted_dir / "rvc_mlx",
+            output_dir=converted_dir / options.engine_id,
             options={
                 "cache_dir": options.cache_dir,
                 "index_path": voice_model.index_path,
@@ -521,10 +531,12 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             },
         )
         converted_vocal = engine_result.converted_vocal_path
-        metrics["rvc_mlx_cache_hit"] = engine_result.cache_hit
+        metrics["trained_model_cache_hit"] = engine_result.cache_hit
+        if options.engine_id == "rvc_mlx":
+            metrics["rvc_mlx_cache_hit"] = engine_result.cache_hit
         metrics["convert_seconds"] = engine_result.seconds
         metrics["seedvc_device"] = engine_result.device
-        metrics["mps_used"] = False
+        metrics["mps_used"] = engine_result.device == "mps"
     else:
         raise ValueError(f"Unsupported conversion engine: {options.engine_id}")
     raw_converted_vocal = converted_vocal

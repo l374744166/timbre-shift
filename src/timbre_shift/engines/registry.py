@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from .base import ConversionEngine
+from .rvc_applio_engine import RVCApplioEngine
 from .rvc_mlx_engine import RVCMLXEngine
 from .seedvc_engine import SeedVCEngine
 
 
 _ENGINES: dict[str, ConversionEngine] = {
     SeedVCEngine.id: SeedVCEngine(),
+    RVCApplioEngine.id: RVCApplioEngine(),
     RVCMLXEngine.id: RVCMLXEngine(),
 }
 

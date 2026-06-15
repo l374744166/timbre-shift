@@ -53,7 +53,7 @@ class AppHandler(BaseHTTPRequestHandler):
         if request_path == "/api/voice-models":
             query = parse_qs(parsed.query)
             voice_id = (query.get("voice_id") or [""])[0]
-            engine_id = (query.get("engine_id") or ["rvc_mlx"])[0]
+            engine_id = (query.get("engine_id") or ["rvc_applio"])[0]
             if not voice_id:
                 self.send_json({"models": []})
                 return
@@ -357,7 +357,7 @@ class AppHandler(BaseHTTPRequestHandler):
         if mode not in PRESETS:
             mode = "m2max_hq_30"
         engine_id = form.getfirst("engine_id", "seedvc")
-        if engine_id not in {"seedvc", "rvc_mlx"}:
+        if engine_id not in {"seedvc", "rvc_applio", "rvc_mlx"}:
             engine_id = "seedvc"
         skip_separation = False
         fields: Dict[str, object] = {

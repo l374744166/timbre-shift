@@ -74,7 +74,7 @@ class PipelineEngineTests(unittest.TestCase):
             with patch("timbre_shift.pipeline.normalize_audio", side_effect=fake_normalize), \
                 patch("timbre_shift.pipeline.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.probe_duration", return_value=10.0):
-                with self.assertRaisesRegex(FileNotFoundError, "RVC-MLX 模型不存在"):
+                with self.assertRaisesRegex(FileNotFoundError, "RVC-MLX Experimental 模型不存在"):
                     run_demo(
                         PipelineOptions(
                             voice_profile_id=profile.id,

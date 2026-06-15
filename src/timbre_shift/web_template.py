@@ -549,8 +549,8 @@ def page_html() -> str:
               <span><strong>Seed-VC</strong><span>零样本，不需要训练，适合试听和当前主流程</span></span>
             </label>
             <label class="option">
-              <input type="radio" name="engine_id" value="rvc_mlx">
-              <span><strong>RVC-MLX 实验</strong><span>需要已训练模型，适合长期音色复用</span></span>
+              <input type="radio" name="engine_id" value="rvc_applio">
+              <span><strong>Applio RVC</strong><span>需要训练模型，适合多素材高要求音色</span></span>
             </label>
           </div>
         </div>
@@ -667,7 +667,7 @@ def page_html() -> str:
         ["MPS", data.mps_used ? "是" : "否"],
         ["库分离命中", data.library_song_stems_hit ? "是" : "否"],
         ["Seed-VC缓存", data.seedvc_cache_hit ? "命中" : "未命中"],
-        ["RVC-MLX模型", data.rvc_mlx_status || "未使用"],
+        ["训练模型", data.trained_model_status || data.rvc_mlx_status || "未使用"],
         ["诊断", diagnostics.most_likely_issue || "未生成"],
         ["诊断置信度", diagnostics.confidence || "-"],
         ["建议", suggestions],
@@ -799,7 +799,7 @@ def page_html() -> str:
 
     async function refreshVoiceModels() {
       const engine = selectedEngine();
-      if (engine !== "rvc_mlx") {
+      if (engine !== "rvc_applio" && engine !== "rvc_mlx") {
         voiceModel.innerHTML = '<option value="">Seed-VC 默认参考音色</option>';
         voiceModel.disabled = true;
         voiceModelHint.textContent = "Seed-VC 会直接使用当前音色参考音频";
@@ -808,17 +808,17 @@ def page_html() -> str:
       voiceModel.disabled = false;
       if (!voiceProfile.value) {
         voiceModel.innerHTML = '<option value="">先选择已保存音色</option>';
-        voiceModelHint.textContent = "RVC-MLX 需要已保存音色和已训练模型";
+        voiceModelHint.textContent = "Applio RVC 需要已保存音色和已训练模型";
         return;
       }
       voiceModel.innerHTML = '<option value="">加载模型中...</option>';
       try {
-        const response = await fetch(`/api/voice-models?voice_id=${encodeURIComponent(voiceProfile.value)}&engine_id=rvc_mlx`);
+        const response = await fetch(`/api/voice-models?voice_id=${encodeURIComponent(voiceProfile.value)}&engine_id=${encodeURIComponent(engine)}`);
         const data = await response.json();
         const readyModels = (data.models || []).filter((model) => model.status === "ready");
         if (!readyModels.length) {
-          voiceModel.innerHTML = '<option value="">没有可用 RVC-MLX 模型</option>';
-          voiceModelHint.textContent = "该音色还没有 RVC-MLX 模型，请先添加素材并训练";
+          voiceModel.innerHTML = '<option value="">没有可用 Applio RVC 模型</option>';
+          voiceModelHint.textContent = "该音色还没有 Applio RVC 模型，请先添加素材并训练";
           return;
         }
         voiceModel.innerHTML = '<option value="">自动选择最新模型</option>' + readyModels.map((model) => {

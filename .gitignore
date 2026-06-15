@@ -25,6 +25,7 @@ models/pretrained/*
 outputs/*
 logs/*
 vendor/seed-vc/
+vendor/applio/
 
 # Keep directory placeholders
 !**/.gitkeep
