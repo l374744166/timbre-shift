@@ -290,6 +290,45 @@ def page_html() -> str:
       font-size: 13px;
       font-weight: 500;
     }
+    .voice-list {
+      display: grid;
+      gap: 6px;
+    }
+    .voice-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 6px 6px 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
+    .voice-row.selected {
+      border-color: var(--accent);
+      background: #eef7f3;
+    }
+    .voice-select {
+      min-height: 30px;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 650;
+      text-align: left;
+      justify-content: flex-start;
+      padding: 0;
+    }
+    .voice-select:hover {
+      background: transparent;
+      color: var(--accent);
+    }
+    .voice-delete {
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
     .actions {
       display: flex;
       align-items: center;
@@ -444,13 +483,11 @@ def page_html() -> str:
         </div>
         <div class="field">
           <label for="voiceProfile">已保存音色</label>
-          <div class="inline-fields">
-            <select id="voiceProfile" name="voice_profile_id">
-              <option value="">上传新声音</option>
-              __VOICE_OPTIONS__
-            </select>
-            <button class="danger" id="deleteVoiceButton" type="button">删除</button>
-          </div>
+          <select id="voiceProfile" name="voice_profile_id">
+            <option value="">上传新声音</option>
+            __VOICE_OPTIONS__
+          </select>
+          <div class="voice-list" id="voiceList"></div>
         </div>
         <div class="field" id="voiceUploadField">
           <label for="voice">上传声音</label>
@@ -564,6 +601,7 @@ def page_html() -> str:
     const progressTime = document.getElementById("progressTime");
     const progressBar = document.getElementById("progressBar");
     const voiceProfile = document.getElementById("voiceProfile");
+    const voiceList = document.getElementById("voiceList");
     const voiceInput = document.getElementById("voice");
     const voiceFileSummary = document.getElementById("voiceFileSummary");
     const voiceUploadField = document.getElementById("voiceUploadField");
@@ -572,7 +610,6 @@ def page_html() -> str:
     const voiceName = document.getElementById("voiceName");
     const saveVoiceButton = document.getElementById("saveVoiceButton");
     const addVoiceSampleButton = document.getElementById("addVoiceSampleButton");
-    const deleteVoiceButton = document.getElementById("deleteVoiceButton");
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
     const voiceHint = document.getElementById("voiceHint");
@@ -635,6 +672,16 @@ def page_html() -> str:
       return `${file.name}:${file.size}:${file.lastModified}`;
     }
 
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+
     function syncVoiceInputFiles() {
       if (typeof DataTransfer === "undefined") return;
       const transfer = new DataTransfer();
@@ -671,6 +718,20 @@ def page_html() -> str:
       renderVoiceFileSummary();
     }
 
+    function renderVoiceList() {
+      const options = Array.from(voiceProfile.options).filter((option) => option.value);
+      if (!options.length) {
+        voiceList.innerHTML = '<div class="hint">还没有保存音色</div>';
+        return;
+      }
+      voiceList.innerHTML = options.map((option) => `
+        <div class="voice-row ${option.selected ? "selected" : ""}" data-id="${escapeHtml(option.value)}">
+          <button class="voice-select" type="button" data-id="${escapeHtml(option.value)}">${escapeHtml(option.textContent)}</button>
+          <button class="danger voice-delete" type="button" data-id="${escapeHtml(option.value)}" data-name="${escapeHtml(option.textContent)}">删除</button>
+        </div>
+      `).join("");
+    }
+
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
       voiceUploadField.style.display = "grid";
@@ -679,10 +740,10 @@ def page_html() -> str:
       voiceSaveActions.style.display = "grid";
       saveVoiceButton.style.display = usingSavedVoice ? "none" : "inline-flex";
       addVoiceSampleButton.style.display = usingSavedVoice ? "inline-flex" : "none";
-      deleteVoiceButton.disabled = !usingSavedVoice;
       voiceHint.textContent = usingSavedVoice ? "可继续添加素材到当前音色" : "选择已有音色，或上传新声音";
       songUploadField.style.display = "grid";
       songHint.textContent = "上传要换声的音频";
+      renderVoiceList();
     }
 
     async function refreshEnv() {
@@ -867,13 +928,19 @@ def page_html() -> str:
       }
     });
 
-    deleteVoiceButton.addEventListener("click", async () => {
-      const id = voiceProfile.value;
-      const selectedOption = voiceProfile.options[voiceProfile.selectedIndex];
-      const name = selectedOption ? selectedOption.textContent : "这个音色";
-      if (!id) return;
+    voiceList.addEventListener("click", async (event) => {
+      const selectButton = event.target.closest(".voice-select");
+      const deleteButton = event.target.closest(".voice-delete");
+      if (selectButton) {
+        voiceProfile.value = selectButton.dataset.id;
+        syncLibraryControls();
+        return;
+      }
+      if (!deleteButton) return;
+      const id = deleteButton.dataset.id;
+      const name = deleteButton.dataset.name || "这个音色";
       if (!window.confirm(`删除已保存音色「${name}」？`)) return;
-      deleteVoiceButton.disabled = true;
+      deleteButton.disabled = true;
       voiceSaveMessage.className = "message";
       voiceSaveMessage.textContent = "删除中...";
       try {
@@ -884,8 +951,11 @@ def page_html() -> str:
         if (!response.ok) {
           throw new Error(data.error || "删除失败");
         }
-        selectedOption.remove();
-        voiceProfile.value = "";
+        const selectedOption = Array.from(voiceProfile.options).find((option) => option.value === id);
+        if (selectedOption) selectedOption.remove();
+        if (voiceProfile.value === id) {
+          voiceProfile.value = "";
+        }
         voiceSaveMessage.textContent = "已删除";
         syncLibraryControls();
       } catch (error) {
@@ -1002,6 +1072,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     }
                 )
             except Exception as exc:
+                PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
@@ -1014,6 +1085,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 archive_voice_profile(voice_id, db_path=DEFAULT_DB_PATH)
                 self.send_json({"id": voice_id, "message": "音色已删除"})
             except Exception as exc:
+                PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
@@ -1084,6 +1156,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     }
                 )
             except Exception as exc:
+                PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 

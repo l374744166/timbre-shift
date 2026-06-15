@@ -77,6 +77,34 @@ class LibraryTests(unittest.TestCase):
             self.assertNotEqual(first.id, second.id)
             self.assertEqual(len(list_voice_profiles(db_path=db_path)), 2)
 
+    def test_save_voice_to_library_keeps_clean_sample_source(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "library.db"
+            raw_audio = root / "song.mp3"
+            clean_audio = root / "vocals.wav"
+            raw_audio.write_bytes(b"raw")
+            clean_audio.write_bytes(b"clean")
+
+            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
+                patch("timbre_shift.library.probe_duration", return_value=5.0):
+                voice = save_voice_to_library(
+                    raw_audio,
+                    "Voice",
+                    clean_audio=clean_audio,
+                    rights_status="own_voice",
+                    allowed_as_target=True,
+                    library_dir=root / "library",
+                    db_path=db_path,
+                )
+
+            samples = list_voice_samples(voice.id, db_path=db_path)
+            self.assertEqual(len(samples), 1)
+            self.assertTrue(Path(samples[0].raw_audio_path).exists())
+            self.assertTrue(Path(samples[0].clean_audio_path).exists())
+
     def test_voice_profile_can_collect_multiple_samples(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)

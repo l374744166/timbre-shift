@@ -423,6 +423,7 @@ def create_voice_profile(
 def save_voice_to_library(
     input_audio: Path,
     name: str,
+    clean_audio: Path | None = None,
     description: str | None = None,
     source_type: str = "upload_voice",
     rights_status: str = "unknown",
@@ -441,7 +442,8 @@ def save_voice_to_library(
     voice_id = make_id("voice")
     voice_dir = library_dir / "voices" / voice_id
     voice_dir.mkdir(parents=True, exist_ok=True)
-    raw_audio = normalize_audio(input_audio, voice_dir / "raw.wav")
+    reference_source = clean_audio or input_audio
+    raw_audio = normalize_audio(reference_source, voice_dir / "raw.wav")
     refs: dict[int, Path] = {}
     for seconds in VOICE_REF_SECONDS:
         refs[seconds] = normalize_audio(
