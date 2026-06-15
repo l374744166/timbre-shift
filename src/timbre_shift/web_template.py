@@ -146,6 +146,22 @@ def page_html() -> str:
       gap: 10px;
       align-items: end;
     }
+    .train-panel {
+      display: none;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfb;
+    }
+    .train-panel.visible {
+      display: grid;
+    }
+    .train-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
     .check {
       display: flex;
       align-items: flex-start;
@@ -444,6 +460,7 @@ def page_html() -> str:
         grid-template-columns: 1fr;
       }
       .radio-group.two-column { grid-template-columns: 1fr; }
+      .train-actions { grid-template-columns: 1fr; }
       .status { white-space: normal; }
       button, .download { width: 100%; }
     }
@@ -560,6 +577,14 @@ def page_html() -> str:
             <option value="">Seed-VC 默认参考音色</option>
           </select>
           <div class="hint" id="voiceModelHint">Seed-VC 会直接使用当前音色参考音频</div>
+          <div class="train-panel" id="applioTrainPanel">
+            <div class="train-actions">
+              <button class="secondary" id="prepareApplioButton" type="button">准备数据集</button>
+              <button class="secondary" id="trainApplioButton" type="button">训练模型</button>
+            </div>
+            <div class="hint">默认 120 epoch / batch 4，训练完成后模型会自动出现在下拉框</div>
+            <div id="applioTrainMessage" class="message"></div>
+          </div>
         </div>
       </section>
       <div class="actions">
@@ -625,6 +650,10 @@ def page_html() -> str:
     const voiceModelField = document.getElementById("voiceModelField");
     const voiceModel = document.getElementById("voiceModel");
     const voiceModelHint = document.getElementById("voiceModelHint");
+    const applioTrainPanel = document.getElementById("applioTrainPanel");
+    const prepareApplioButton = document.getElementById("prepareApplioButton");
+    const trainApplioButton = document.getElementById("trainApplioButton");
+    const applioTrainMessage = document.getElementById("applioTrainMessage");
     const songInput = document.getElementById("song");
     const songUploadField = document.getElementById("songUploadField");
     const songFileSummary = document.getElementById("songFileSummary");
@@ -799,16 +828,20 @@ def page_html() -> str:
 
     async function refreshVoiceModels() {
       const engine = selectedEngine();
+      const showTraining = engine === "rvc_applio" && Boolean(voiceProfile.value);
+      applioTrainPanel.classList.toggle("visible", showTraining);
       if (engine !== "rvc_applio" && engine !== "rvc_mlx") {
         voiceModel.innerHTML = '<option value="">Seed-VC 默认参考音色</option>';
         voiceModel.disabled = true;
         voiceModelHint.textContent = "Seed-VC 会直接使用当前音色参考音频";
+        applioTrainMessage.textContent = "";
         return;
       }
       voiceModel.disabled = false;
       if (!voiceProfile.value) {
         voiceModel.innerHTML = '<option value="">先选择已保存音色</option>';
         voiceModelHint.textContent = "Applio RVC 需要已保存音色和已训练模型";
+        applioTrainMessage.textContent = "";
         return;
       }
       voiceModel.innerHTML = '<option value="">加载模型中...</option>';
@@ -1028,6 +1061,51 @@ def page_html() -> str:
         syncLibraryControls();
       }
     });
+
+    async function runApplioAction(kind) {
+      const id = voiceProfile.value;
+      if (!id) {
+        applioTrainMessage.className = "message error";
+        applioTrainMessage.textContent = "先选择一个已保存音色";
+        return;
+      }
+      const isTrain = kind === "train";
+      const button = isTrain ? trainApplioButton : prepareApplioButton;
+      const endpoint = isTrain ? "/api/applio-train" : "/api/applio-prepare";
+      applioTrainMessage.className = "message";
+      applioTrainMessage.textContent = isTrain ? "训练中..." : "准备数据集中...";
+      prepareApplioButton.disabled = true;
+      trainApplioButton.disabled = true;
+      startProgressPolling();
+      try {
+        const body = new FormData();
+        body.append("voice_profile_id", id);
+        const response = await fetch(endpoint, { method: "POST", body });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || (isTrain ? "训练失败" : "准备失败"));
+        }
+        if (isTrain) {
+          applioTrainMessage.textContent = `训练完成：${data.name || data.id}`;
+          await refreshVoiceModels();
+          if (data.id) voiceModel.value = data.id;
+        } else {
+          const seconds = data.total_seconds == null ? "-" : `${formatNumber(data.total_seconds, 0)}秒`;
+          const warnings = Array.isArray(data.warnings) && data.warnings.length ? `；${data.warnings.join("；")}` : "";
+          applioTrainMessage.textContent = `数据集已准备：${seconds}素材${warnings}`;
+        }
+      } catch (error) {
+        applioTrainMessage.className = "message error";
+        applioTrainMessage.textContent = error.message;
+      } finally {
+        prepareApplioButton.disabled = false;
+        trainApplioButton.disabled = false;
+        stopProgressPolling();
+      }
+    }
+
+    prepareApplioButton.addEventListener("click", () => runApplioAction("prepare"));
+    trainApplioButton.addEventListener("click", () => runApplioAction("train"));
 
     voiceTrigger.addEventListener("click", () => {
       voiceDropdown.classList.toggle("open");

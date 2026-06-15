@@ -25,6 +25,7 @@ from .library import (
     save_voice_to_library,
 )
 from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
+from .rvc_applio import prepare_applio_dataset, train_applio_model
 from .vocal_segments import compact_for_conversion
 from .web_state import PROGRESS
 from .web_template import page_html
@@ -159,6 +160,68 @@ class AppHandler(BaseHTTPRequestHandler):
                     raise ValueError("请选择要删除的音色")
                 archive_voice_profile(voice_id, db_path=DEFAULT_DB_PATH)
                 self.send_json({"id": voice_id, "message": "音色已删除"})
+            except Exception as exc:
+                PROGRESS.fail(str(exc))
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/applio-prepare":
+            try:
+                fields = self.read_form_fields()
+                voice_id = str(fields.get("voice_profile_id", "")).strip()
+                if not voice_id:
+                    raise ValueError("先选择一个已保存音色")
+                PROGRESS.reset("准备 Applio RVC 数据集", 5, "running")
+                result = prepare_applio_dataset(
+                    voice_id,
+                    library_dir=DEFAULT_LIBRARY_DIR,
+                    db_path=DEFAULT_DB_PATH,
+                )
+                PROGRESS.update("Applio RVC 数据集已准备", 100, "completed")
+                self.send_json(
+                    {
+                        "dataset_path": str(result.dataset_path),
+                        "metadata_path": str(result.metadata_path),
+                        "total_seconds": result.total_seconds,
+                        "sample_count": result.sample_count,
+                        "segment_count": result.segment_count,
+                        "warnings": result.warnings,
+                        "message": "数据集已准备",
+                    }
+                )
+            except Exception as exc:
+                PROGRESS.fail(str(exc))
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/applio-train":
+            try:
+                fields = self.read_form_fields()
+                voice_id = str(fields.get("voice_profile_id", "")).strip()
+                if not voice_id:
+                    raise ValueError("先选择一个已保存音色")
+                PROGRESS.reset("开始 Applio RVC 训练", 2, "running")
+                model = train_applio_model(
+                    voice_id,
+                    library_dir=DEFAULT_LIBRARY_DIR,
+                    db_path=DEFAULT_DB_PATH,
+                    epochs=120,
+                    batch_size=4,
+                    sample_rate=40000,
+                )
+                PROGRESS.update("Applio RVC 训练完成", 100, "completed")
+                self.send_json(
+                    {
+                        "id": model.id,
+                        "name": model.model_name,
+                        "model_path": model.model_path,
+                        "index_path": model.index_path,
+                        "dataset_seconds": model.dataset_seconds,
+                        "training_seconds": model.training_seconds,
+                        "status": model.status,
+                        "message": "训练完成",
+                    }
+                )
             except Exception as exc:
                 PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
