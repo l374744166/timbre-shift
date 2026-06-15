@@ -22,6 +22,8 @@ voice data that is owned by, licensed to, or explicitly consented by the speaker
 - `docs`: design notes and project documentation
 - `tests`: automated tests
 
+For the current Python module responsibilities, see `docs/architecture.md`.
+
 ## First Milestones
 
 1. Prepare legal target voice samples.
