@@ -130,7 +130,9 @@ def _seedvc_chunk_settings(options: PipelineOptions, preset: RenderPreset) -> tu
     chunk_seconds = options.seedvc_chunk_seconds
     workers = options.seedvc_chunk_workers
     if not chunk_seconds:
-        chunk_seconds = int(os.environ.get("TIMBRE_SHIFT_SEEDVC_CHUNK_SECONDS", "30") or "0")
+        chunk_seconds = int(os.environ.get("TIMBRE_SHIFT_SEEDVC_CHUNK_SECONDS", "0") or "0")
+    if chunk_seconds <= 0:
+        return 0, 1
     if not workers:
         workers = int(os.environ.get("TIMBRE_SHIFT_SEEDVC_CHUNK_WORKERS", "2") or "1")
     return max(0, chunk_seconds), max(1, workers)
