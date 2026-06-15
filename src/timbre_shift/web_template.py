@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 
-from .library import DEFAULT_DB_PATH, init_library, list_voice_profiles
+from .library import DEFAULT_DB_PATH, init_library, list_songs, list_voice_profiles
 
 
 def page_html() -> str:
@@ -12,6 +12,10 @@ def page_html() -> str:
     voice_options = "\n".join(
         f'<option value="{html.escape(profile.id)}">{html.escape(profile.name)}</option>'
         for profile in list_voice_profiles(only_allowed_targets=True, db_path=DEFAULT_DB_PATH)
+    )
+    song_options = "\n".join(
+        f'<option value="{html.escape(song.id)}">{html.escape(song.title)}</option>'
+        for song in list_songs(db_path=DEFAULT_DB_PATH)
     )
     body = """<!doctype html>
 <html lang="zh-CN">
@@ -529,7 +533,27 @@ def page_html() -> str:
     <form id="form">
       <section class="section">
         <div class="section-title">
-          <h2>1. 音色</h2>
+          <h2>1. 模型</h2>
+          <span class="hint" id="engineHint">先选择转换流程</span>
+        </div>
+        <div class="field">
+          <label>转换模型</label>
+          <div class="radio-group two-column">
+            <label class="option">
+              <input type="radio" name="engine_id" value="seedvc" checked>
+              <span><strong>Seed-VC</strong><span>不用训练，选音色和歌曲后直接生成</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="engine_id" value="rvc_applio">
+              <span><strong>Applio RVC</strong><span>先训练模型，再用模型生成歌曲</span></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <h2 id="voiceSectionTitle">2. 音色</h2>
           <span class="hint" id="voiceHint">选一个音色</span>
         </div>
         <div class="field">
@@ -575,8 +599,15 @@ def page_html() -> str:
 
       <section class="section">
         <div class="section-title">
-          <h2>2. 歌曲</h2>
+          <h2 id="songSectionTitle">3. 歌曲</h2>
           <span class="hint" id="songHint">歌曲文件</span>
+        </div>
+        <div class="field" id="songLibraryField">
+          <label for="songLibrary">已有歌曲</label>
+          <select id="songLibrary" name="song_id">
+            <option value="">上传新歌曲</option>
+            __SONG_OPTIONS__
+          </select>
         </div>
         <div class="field" id="songUploadField">
           <label for="song">歌曲文件</label>
@@ -587,7 +618,7 @@ def page_html() -> str:
 
       <section class="section">
         <div class="section-title">
-          <h2>3. 生成</h2>
+          <h2>4. 生成</h2>
           <span class="hint">默认整首模式</span>
         </div>
         <div class="field">
@@ -608,19 +639,6 @@ def page_html() -> str:
             <label class="option">
               <input type="radio" name="mode" value="m2max_offline_max">
               <span><strong>离线最高质量</strong><span>最慢，适合最终出片</span></span>
-            </label>
-          </div>
-        </div>
-        <div class="field">
-          <label>转换引擎</label>
-          <div class="radio-group two-column">
-            <label class="option">
-              <input type="radio" name="engine_id" value="seedvc" checked>
-              <span><strong>Seed-VC</strong><span>零样本，不需要训练，适合试听和当前主流程</span></span>
-            </label>
-            <label class="option">
-              <input type="radio" name="engine_id" value="rvc_applio">
-              <span><strong>Applio RVC</strong><span>需要训练模型，适合多素材高要求音色</span></span>
             </label>
           </div>
         </div>
@@ -686,6 +704,38 @@ def page_html() -> str:
             </select>
           </div>
         </div>
+        <div class="field">
+          <label>训练素材</label>
+          <div class="radio-group two-column">
+            <label class="option">
+              <input type="radio" name="rvc_training_source" value="library" checked>
+              <span><strong>已有音色素材</strong><span>使用这个音色库里已经保存的干净素材</span></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="rvc_training_source" value="upload">
+              <span><strong>上传新训练音频</strong><span>可一次放多首歌/多段声音，先加入音色再训练</span></span>
+            </label>
+          </div>
+        </div>
+        <div class="field" id="rvcTrainingUploadField">
+          <label for="rvcTrainingFiles">训练音频</label>
+          <input id="rvcTrainingFiles" type="file" accept="audio/*" multiple>
+          <div class="hint" id="rvcTrainingFileSummary">可多次选择，训练素材会累加</div>
+          <div class="selected-file-list" id="rvcTrainingFileList"></div>
+          <div class="field">
+            <label>素材类型</label>
+            <div class="radio-group two-column">
+              <label class="option">
+                <input type="radio" name="rvc_training_source_type" value="clean_voice" checked>
+                <span><strong>干净人声</strong><span>最快，适合你已经处理过的素材</span></span>
+              </label>
+              <label class="option">
+                <input type="radio" name="rvc_training_source_type" value="mixed_voice">
+                <span><strong>歌曲/带伴奏</strong><span>先分离人声再训练，会慢一些</span></span>
+              </label>
+            </div>
+          </div>
+        </div>
         <div class="train-actions">
           <button class="secondary" id="prepareApplioButton" type="button">准备数据集</button>
           <button id="trainApplioButton" type="button">开始训练</button>
@@ -733,6 +783,9 @@ def page_html() -> str:
     const addVoiceSampleButton = document.getElementById("addVoiceSampleButton");
     const voiceSaveActions = document.getElementById("voiceSaveActions");
     const voiceSaveMessage = document.getElementById("voiceSaveMessage");
+    const engineHint = document.getElementById("engineHint");
+    const voiceSectionTitle = document.getElementById("voiceSectionTitle");
+    const songSectionTitle = document.getElementById("songSectionTitle");
     const voiceHint = document.getElementById("voiceHint");
     const voiceModelField = document.getElementById("voiceModelField");
     const voiceModel = document.getElementById("voiceModel");
@@ -745,15 +798,21 @@ def page_html() -> str:
     const trainApplioButton = document.getElementById("trainApplioButton");
     const applioTrainMessage = document.getElementById("applioTrainMessage");
     const applioEpochs = document.getElementById("applioEpochs");
+    const rvcTrainingUploadField = document.getElementById("rvcTrainingUploadField");
+    const rvcTrainingFiles = document.getElementById("rvcTrainingFiles");
+    const rvcTrainingFileSummary = document.getElementById("rvcTrainingFileSummary");
+    const rvcTrainingFileList = document.getElementById("rvcTrainingFileList");
     const trainingProgressStep = document.getElementById("trainingProgressStep");
     const trainingProgressTime = document.getElementById("trainingProgressTime");
     const trainingProgressBar = document.getElementById("trainingProgressBar");
     const songInput = document.getElementById("song");
+    const songLibrary = document.getElementById("songLibrary");
     const songUploadField = document.getElementById("songUploadField");
     const songFileSummary = document.getElementById("songFileSummary");
     const songHint = document.getElementById("songHint");
     let progressPoller = null;
     let selectedVoiceFiles = [];
+    let selectedRvcTrainingFiles = [];
     let hasReadyVoiceModel = false;
 
     function formatDuration(seconds) {
@@ -873,6 +932,49 @@ def page_html() -> str:
       selectedVoiceFiles.splice(index, 1);
       syncVoiceInputFiles();
       renderVoiceFileSummary();
+    }
+
+    function renderRvcTrainingFileSummary() {
+      if (!selectedRvcTrainingFiles.length) {
+        rvcTrainingFileSummary.textContent = "可多次选择，训练素材会累加";
+        rvcTrainingFileList.innerHTML = "";
+        return;
+      }
+      const names = selectedRvcTrainingFiles.slice(0, 3).map((file) => file.name).join("，");
+      const suffix = selectedRvcTrainingFiles.length > 3 ? ` 等 ${selectedRvcTrainingFiles.length} 个` : ` 共 ${selectedRvcTrainingFiles.length} 个`;
+      rvcTrainingFileSummary.textContent = `已选：${names}${suffix}`;
+      rvcTrainingFileList.innerHTML = selectedRvcTrainingFiles.map((file, index) => `
+        <div class="selected-file-row">
+          <span class="selected-file-name">${escapeHtml(file.name)}</span>
+          <button class="danger rvc-training-remove" type="button" data-index="${index}">移除</button>
+        </div>
+      `).join("");
+    }
+
+    function appendRvcTrainingFiles(files) {
+      const existing = new Set(selectedRvcTrainingFiles.map(voiceFileKey));
+      Array.from(files).forEach((file) => {
+        const key = voiceFileKey(file);
+        if (!existing.has(key)) {
+          selectedRvcTrainingFiles.push(file);
+          existing.add(key);
+        }
+      });
+      renderRvcTrainingFileSummary();
+    }
+
+    function removeRvcTrainingFile(index) {
+      selectedRvcTrainingFiles.splice(index, 1);
+      renderRvcTrainingFileSummary();
+    }
+
+    function selectedRvcTrainingSource() {
+      const checked = document.querySelector('input[name="rvc_training_source"]:checked');
+      return checked ? checked.value : "library";
+    }
+
+    function syncRvcTrainingSource() {
+      rvcTrainingUploadField.style.display = selectedRvcTrainingSource() === "upload" ? "grid" : "none";
     }
 
     function renderSongFileSummary() {
@@ -1006,18 +1108,26 @@ def page_html() -> str:
     function syncLibraryControls() {
       const usingSavedVoice = Boolean(voiceProfile.value);
       const engine = selectedEngine();
+      const usingRvc = engine === "rvc_applio";
+      engineHint.textContent = usingRvc ? "RVC 需要先训练或选择模型" : "Seed-VC 可直接生成";
+      voiceSectionTitle.textContent = usingRvc ? "2. 训练音色" : "2. 目标音色";
+      songSectionTitle.textContent = usingRvc ? "3. 生成歌曲" : "3. 歌曲";
       voiceUploadField.style.display = "grid";
       voiceSourceField.style.display = "grid";
       voiceNameField.style.display = "grid";
       voiceSaveActions.style.display = "grid";
       saveVoiceButton.style.display = usingSavedVoice ? "none" : "inline-flex";
       addVoiceSampleButton.style.display = usingSavedVoice ? "inline-flex" : "none";
-      voiceHint.textContent = usingSavedVoice ? "可继续添加素材到当前音色" : "选择已有音色，或上传新声音";
+      voiceHint.textContent = usingRvc
+        ? (usingSavedVoice ? "选择模型或继续添加训练素材" : "先选择或保存一个要训练的音色")
+        : (usingSavedVoice ? "使用这个音色生成" : "选择已有音色，或上传新声音");
       renderVoiceFileSummary();
       songUploadField.style.display = "grid";
-      songHint.textContent = "上传要换声的音频";
+      songUploadField.style.display = songLibrary.value ? "none" : "grid";
+      songHint.textContent = songLibrary.value ? "使用已保存歌曲" : "上传要换声的音频";
       renderVoiceMenu();
       refreshVoiceModels();
+      syncRvcTrainingSource();
     }
 
     async function refreshEnv() {
@@ -1231,6 +1341,24 @@ def page_html() -> str:
       trainApplioButton.disabled = true;
       startProgressPolling();
       try {
+        if (isTrain && selectedRvcTrainingSource() === "upload") {
+          if (!selectedRvcTrainingFiles.length) {
+            throw new Error("先上传一个或多个训练音频，或改用已有音色素材");
+          }
+          applioTrainMessage.textContent = "先添加新训练素材...";
+          const sampleBody = new FormData();
+          sampleBody.append("voice_profile_id", id);
+          selectedRvcTrainingFiles.forEach((file) => sampleBody.append("voice", file));
+          sampleBody.append("voice_name", voiceName.value || selectedRvcTrainingFiles[0].name);
+          const sourceType = document.querySelector('input[name="rvc_training_source_type"]:checked')?.value || "clean_voice";
+          sampleBody.append("voice_source_type", sourceType);
+          const sampleResponse = await fetch("/api/add-voice-sample", { method: "POST", body: sampleBody });
+          const sampleData = await sampleResponse.json();
+          if (!sampleResponse.ok) {
+            throw new Error(sampleData.error || "添加训练素材失败");
+          }
+          applioTrainMessage.textContent = `已添加训练素材，总数 ${sampleData.sample_count}，开始训练...`;
+        }
         const body = new FormData();
         body.append("voice_profile_id", id);
         if (isTrain) body.append("epochs", applioEpochs.value || "10");
@@ -1330,6 +1458,16 @@ def page_html() -> str:
       if (!removeButton) return;
       removeVoiceFile(Number(removeButton.dataset.index));
     });
+    rvcTrainingFiles.addEventListener("change", () => appendRvcTrainingFiles(rvcTrainingFiles.files));
+    rvcTrainingFileList.addEventListener("click", (event) => {
+      const removeButton = event.target.closest(".rvc-training-remove");
+      if (!removeButton) return;
+      removeRvcTrainingFile(Number(removeButton.dataset.index));
+    });
+    Array.from(document.querySelectorAll('input[name="rvc_training_source"]')).forEach((input) => {
+      input.addEventListener("change", syncRvcTrainingSource);
+    });
+    songLibrary.addEventListener("change", syncLibraryControls);
     songInput.addEventListener("change", renderSongFileSummary);
     songFileSummary.addEventListener("click", (event) => {
       if (!event.target.closest("#clearSongButton")) return;
@@ -1341,9 +1479,10 @@ def page_html() -> str:
       input.addEventListener("change", syncLibraryControls);
     });
     renderVoiceFileSummary();
+    renderRvcTrainingFileSummary();
     renderSongFileSummary();
     syncLibraryControls();
   </script>
 </body>
 </html>"""
-    return body.replace("__VOICE_OPTIONS__", voice_options)
+    return body.replace("__VOICE_OPTIONS__", voice_options).replace("__SONG_OPTIONS__", song_options)
