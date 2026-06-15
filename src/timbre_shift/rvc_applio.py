@@ -230,8 +230,25 @@ def train_applio_model(
 
     start = time.perf_counter()
     code = f"""
+from pathlib import Path
 from core import run_extract_script, run_preprocess_script, run_prerequisites_script, run_train_script
+import rvc.lib.tools.prerequisites_download as prerequisites
+
+# Timbre Shift trains Applio with HiFi-GAN by default. Applio's downloader also
+# fetches RefineGAN files, but those are not needed for this path and are large
+# enough to make first-time setup fragile on unstable HuggingFace connections.
+prerequisites.pretraineds_refinegan_list = []
 run_prerequisites_script(True, True, False)
+required = [
+    "rvc/models/predictors/rmvpe.pt",
+    "rvc/models/embedders/contentvec/pytorch_model.bin",
+    "rvc/models/embedders/contentvec/config.json",
+    "rvc/models/pretraineds/hifi-gan/f0G{str(sample_rate)[:2]}k.pth",
+    "rvc/models/pretraineds/hifi-gan/f0D{str(sample_rate)[:2]}k.pth",
+]
+missing = [path for path in required if not Path(path).exists()]
+if missing:
+    raise FileNotFoundError("Applio RVC 训练资源缺失: " + ", ".join(missing))
 msg = run_preprocess_script({model_name!r}, {str(applio_dataset)!r}, {sample_rate}, {os.cpu_count() or 4}, "Automatic", False, True, 0.5, 3.0, 0.3, "none")
 print(msg)
 msg = run_extract_script({model_name!r}, "rmvpe", {os.cpu_count() or 4}, 0, {sample_rate}, "contentvec", None, 2)
