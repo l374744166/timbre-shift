@@ -592,6 +592,10 @@ def page_html() -> str:
     }
 
     function renderMetrics(data) {
+      const diagnostics = data.diagnostics || {};
+      const suggestions = Array.isArray(diagnostics.suggestions) && diagnostics.suggestions.length
+        ? diagnostics.suggestions.slice(0, 2).join("；")
+        : "-";
       const items = [
         ["总用时", `${formatNumber(data.total_seconds)} 秒`],
         ["Demucs", `${formatNumber(data.demucs_seconds)} 秒`],
@@ -602,6 +606,9 @@ def page_html() -> str:
         ["MPS", data.mps_used ? "是" : "否"],
         ["库分离命中", data.library_song_stems_hit ? "是" : "否"],
         ["Seed-VC缓存", data.seedvc_cache_hit ? "命中" : "未命中"],
+        ["诊断", diagnostics.most_likely_issue || "未生成"],
+        ["诊断置信度", diagnostics.confidence || "-"],
+        ["建议", suggestions],
       ];
       metrics.innerHTML = items.map(([label, value]) => `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join("");
       metrics.classList.add("visible");

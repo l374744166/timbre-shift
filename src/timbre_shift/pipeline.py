@@ -13,6 +13,7 @@ from typing import Callable, List, Optional
 from .audio import export_mp3, middle_start, mix_audio, normalize_audio, polish_vocal, probe_duration
 from .commands import require_binary
 from .demucs import separate_vocals
+from .diagnostics import AnalyzerContext, analyze_generation
 from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
@@ -226,6 +227,7 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         "seedvc_cpu_fallback_used": False,
         "output_wav": None,
         "output_mp3": None,
+        "diagnostics": None,
         "error_message": None,
     }
 
@@ -388,6 +390,7 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
             backing_track = library_backing
 
     if preset.compact_vocals and not skip_separation:
+        diagnostic_source_vocal = source_vocal
         step_start = time.perf_counter()
         update("检测有效人声片段", 45)
         compact_result = compact_for_conversion(
@@ -411,6 +414,8 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         else:
             compact_result = None
             update("人声几乎贯穿全曲，直接转换", 55)
+    else:
+        diagnostic_source_vocal = source_vocal
     if metrics["active_vocal_seconds"] is None:
         metrics["active_vocal_seconds"] = probe_duration(source_vocal)
 
@@ -432,6 +437,7 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         allow_cpu_fallback=allow_cpu_fallback,
     )
     converted_vocal = seedvc_result.output
+    raw_converted_vocal = converted_vocal
     metrics["seedvc_cache_hit"] = seedvc_result.cache_hit
     metrics["seedvc_seconds"] = seedvc_result.elapsed_seconds
     metrics["seedvc_device"] = seedvc_result.device_used
@@ -456,6 +462,7 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         metrics["restore_timeline_seconds"] = time.perf_counter() - step_start
 
     metrics["converted_vocal_wav"] = str(converted_vocal)
+    raw_converted_vocal = converted_vocal
     if options.polish_converted_vocal:
         step_start = time.perf_counter()
         update("优化换声后人声", 90)
@@ -495,6 +502,18 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         step_start = time.perf_counter()
         final_mp3 = export_mp3(final_output, options.output_dir / "final.mp3")
         metrics["mp3_export_seconds"] = time.perf_counter() - step_start
+
+    update("生成诊断报告", 98)
+    metrics["diagnostics"] = analyze_generation(
+        AnalyzerContext(
+            source_vocal=diagnostic_source_vocal,
+            converted_vocal=raw_converted_vocal,
+            polished_vocal=converted_vocal,
+            final_mix=final_output,
+            backing_track=backing_track,
+            active_ratio=metrics["active_ratio"] if isinstance(metrics["active_ratio"], float) else None,
+        )
+    )
 
     metrics["total_seconds"] = time.perf_counter() - total_start
     metrics["output_wav"] = str(final_output)
