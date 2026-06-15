@@ -5,12 +5,23 @@ from __future__ import annotations
 import shutil
 import sys
 import json
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from .audio import export_mp3, middle_start, mix_audio, normalize_audio, polish_vocal, probe_duration
+from .audio import (
+    concat_audio_files,
+    export_mp3,
+    middle_start,
+    mix_audio,
+    normalize_audio,
+    polish_vocal,
+    probe_duration,
+    split_audio_fixed,
+)
 from .commands import require_binary
 from .demucs import separate_vocals
 from .diagnostics import AnalyzerContext, analyze_generation
@@ -109,6 +120,115 @@ class PipelineOptions:
     rights_confirmed: bool = False
     source_mode: str = "full_song"
     polish_converted_vocal: bool = True
+    seedvc_chunk_seconds: int = 0
+    seedvc_chunk_workers: int = 1
+
+
+def _seedvc_chunk_settings(options: PipelineOptions, preset: RenderPreset) -> tuple[int, int]:
+    if preset.clip_seconds:
+        return 0, 1
+    chunk_seconds = options.seedvc_chunk_seconds
+    workers = options.seedvc_chunk_workers
+    if not chunk_seconds:
+        chunk_seconds = int(os.environ.get("TIMBRE_SHIFT_SEEDVC_CHUNK_SECONDS", "30") or "0")
+    if not workers:
+        workers = int(os.environ.get("TIMBRE_SHIFT_SEEDVC_CHUNK_WORKERS", "2") or "1")
+    return max(0, chunk_seconds), max(1, workers)
+
+
+def _convert_seedvc_whole(
+    options: PipelineOptions,
+    preset: RenderPreset,
+    source_vocal: Path,
+    prepared_voice: Path,
+    converted_dir: Path,
+    actual_device: str,
+    allow_cpu_fallback: bool,
+) -> SeedVCResult:
+    return convert_singing_voice_result(
+        seed_vc_dir=options.seed_vc_dir,
+        source_vocal=source_vocal,
+        target_voice=prepared_voice,
+        output_dir=converted_dir,
+        diffusion_steps=preset.diffusion_steps,
+        length_adjust=options.length_adjust,
+        inference_cfg_rate=preset.inference_cfg_rate,
+        semi_tone_shift=options.semi_tone_shift,
+        fp16=options.fp16 if options.fp16 is not None else False,
+        device=actual_device,
+        target_voice_seconds=preset.reference_seconds,
+        cache_dir=options.cache_dir,
+        allow_cpu_fallback=allow_cpu_fallback,
+    )
+
+
+def _convert_seedvc_chunked(
+    options: PipelineOptions,
+    preset: RenderPreset,
+    source_vocal: Path,
+    prepared_voice: Path,
+    converted_dir: Path,
+    actual_device: str,
+    chunk_seconds: int,
+    workers: int,
+) -> SeedVCResult:
+    duration = probe_duration(source_vocal) or 0
+    if duration <= chunk_seconds * 1.25:
+        raise ValueError("Audio is too short for chunked Seed-VC conversion")
+
+    chunk_dir = converted_dir / f"chunks_{chunk_seconds}s"
+    input_dir = chunk_dir / "input"
+    output_root = chunk_dir / "output"
+    chunks = split_audio_fixed(source_vocal, input_dir, chunk_seconds)
+    if len(chunks) < 2:
+        raise ValueError("Seed-VC chunking produced fewer than two chunks")
+
+    worker_count = min(max(1, workers), len(chunks))
+    results: list[SeedVCResult | None] = [None] * len(chunks)
+
+    def convert_one(index: int, chunk: Path) -> tuple[int, SeedVCResult]:
+        result = convert_singing_voice_result(
+            seed_vc_dir=options.seed_vc_dir,
+            source_vocal=chunk,
+            target_voice=prepared_voice,
+            output_dir=output_root / f"chunk_{index:04d}",
+            diffusion_steps=preset.diffusion_steps,
+            length_adjust=options.length_adjust,
+            inference_cfg_rate=preset.inference_cfg_rate,
+            semi_tone_shift=options.semi_tone_shift,
+            fp16=options.fp16 if options.fp16 is not None else False,
+            device=actual_device,
+            target_voice_seconds=preset.reference_seconds,
+            cache_dir=options.cache_dir,
+            allow_cpu_fallback=False,
+        )
+        return index, result
+
+    start = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = [executor.submit(convert_one, index, chunk) for index, chunk in enumerate(chunks)]
+        for future in as_completed(futures):
+            index, result = future.result()
+            results[index] = result
+
+    ordered = [result for result in results if result is not None]
+    if len(ordered) != len(chunks):
+        raise RuntimeError("Seed-VC chunked conversion did not finish all chunks")
+
+    output = concat_audio_files(
+        [result.output for result in ordered],
+        converted_dir / f"converted_chunked_{chunk_seconds}s.wav",
+    )
+    elapsed = time.perf_counter() - start
+    return SeedVCResult(
+        output=output,
+        cache_hit=all(result.cache_hit for result in ordered),
+        elapsed_seconds=elapsed,
+        cache_key="chunked-" + "-".join(result.cache_key[:8] for result in ordered),
+        device_requested=actual_device,
+        device_used=actual_device,
+        cpu_fallback_used=False,
+    )
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
@@ -203,6 +323,11 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
         "library_song_stems_hit": False,
         "demucs_cache_hit": False,
         "seedvc_cache_hit": False,
+        "seedvc_chunked_attempted": False,
+        "seedvc_chunked_used": False,
+        "seedvc_chunk_seconds": 0,
+        "seedvc_chunk_workers": 1,
+        "seedvc_chunk_error": None,
         "song_duration_seconds": None,
         "active_vocal_seconds": None,
         "active_ratio": None,
@@ -421,21 +546,39 @@ def run_demo(options: PipelineOptions, progress: Optional[ProgressCallback] = No
 
     update(f"转换为目标音色（{preset.diffusion_steps} steps，{cache_label}）", 70)
     allow_cpu_fallback = preset.clip_seconds is not None and preset.clip_seconds <= 15
-    seedvc_result = convert_singing_voice_result(
-        seed_vc_dir=options.seed_vc_dir,
-        source_vocal=source_vocal,
-        target_voice=prepared_voice,
-        output_dir=converted_dir,
-        diffusion_steps=preset.diffusion_steps,
-        length_adjust=options.length_adjust,
-        inference_cfg_rate=preset.inference_cfg_rate,
-        semi_tone_shift=options.semi_tone_shift,
-        fp16=options.fp16 if options.fp16 is not None else False,
-        device=actual_device,
-        target_voice_seconds=preset.reference_seconds,
-        cache_dir=options.cache_dir,
-        allow_cpu_fallback=allow_cpu_fallback,
-    )
+    chunk_seconds, chunk_workers = _seedvc_chunk_settings(options, preset)
+    metrics["seedvc_chunk_seconds"] = chunk_seconds
+    metrics["seedvc_chunk_workers"] = chunk_workers
+    seedvc_result = None
+    if chunk_seconds:
+        metrics["seedvc_chunked_attempted"] = True
+        try:
+            update(f"分段换声（{chunk_seconds}秒 / {chunk_workers}路）", 70)
+            seedvc_result = _convert_seedvc_chunked(
+                options=options,
+                preset=preset,
+                source_vocal=source_vocal,
+                prepared_voice=prepared_voice,
+                converted_dir=converted_dir,
+                actual_device=actual_device,
+                chunk_seconds=chunk_seconds,
+                workers=chunk_workers,
+            )
+            metrics["seedvc_chunked_used"] = True
+        except Exception as exc:
+            metrics["seedvc_chunk_error"] = str(exc)
+            update("分段换声失败，回退整段换声", 70)
+
+    if seedvc_result is None:
+        seedvc_result = _convert_seedvc_whole(
+            options=options,
+            preset=preset,
+            source_vocal=source_vocal,
+            prepared_voice=prepared_voice,
+            converted_dir=converted_dir,
+            actual_device=actual_device,
+            allow_cpu_fallback=allow_cpu_fallback,
+        )
     converted_vocal = seedvc_result.output
     raw_converted_vocal = converted_vocal
     metrics["seedvc_cache_hit"] = seedvc_result.cache_hit

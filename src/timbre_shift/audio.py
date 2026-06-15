@@ -76,6 +76,63 @@ def normalize_audio(
     return target
 
 
+def split_audio_fixed(source: Path, output_dir: Path, chunk_seconds: int) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pattern = output_dir / "chunk_%04d.wav"
+    run_command(
+        as_strs(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                source,
+                "-f",
+                "segment",
+                "-segment_time",
+                chunk_seconds,
+                "-reset_timestamps",
+                "1",
+                "-ac",
+                1,
+                "-ar",
+                44100,
+                pattern,
+            ]
+        )
+    )
+    return sorted(output_dir.glob("chunk_*.wav"))
+
+
+def concat_audio_files(sources: list[Path], output: Path) -> Path:
+    if not sources:
+        raise ValueError("No audio chunks to concatenate")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    list_file = output.parent / f"{output.stem}_concat.txt"
+    lines = []
+    for source in sources:
+        escaped = str(source.resolve()).replace("'", "'\\''")
+        lines.append(f"file '{escaped}'")
+    list_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    run_command(
+        as_strs(
+            [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                list_file,
+                "-c",
+                "copy",
+                output,
+            ]
+        )
+    )
+    return output
+
+
 def mix_audio(
     converted_vocal: Path,
     backing_track: Path,

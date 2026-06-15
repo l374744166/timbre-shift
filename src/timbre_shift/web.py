@@ -699,6 +699,7 @@ def page_html() -> str:
         ["总用时", `${formatNumber(data.total_seconds)} 秒`],
         ["Demucs", `${formatNumber(data.demucs_seconds)} 秒`],
         ["Seed-VC", `${formatNumber(data.seedvc_seconds)} 秒`],
+        ["分段换声", data.seedvc_chunked_used ? `${data.seedvc_chunk_seconds || "-"}秒 / ${data.seedvc_chunk_workers || 1}路` : (data.seedvc_chunked_attempted ? "已回退整段" : "未启用")],
         ["有效人声", `${formatNumber(data.active_vocal_seconds)} 秒`],
         ["人声占比", data.active_ratio == null ? "-" : `${formatNumber(data.active_ratio * 100)}%`],
         ["Seed-VC RTF", formatNumber(data.seedvc_rtf, 2)],
