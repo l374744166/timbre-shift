@@ -1,0 +1,58 @@
+.status-pill,.status-badge {display:inline-flex;
+  align-items:center;
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:6px 10px;
+  color:var(--muted);
+  font-size:13px}
+.status-pill.ok,.status-badge.ok {border-color:rgba(53,199,138,.4);
+  color:var(--ok)}
+.status-pill.warn,.status-badge.warn {border-color:rgba(244,183,64,.5);
+  color:var(--warn)}
+.progress-card {display:grid;
+  gap:10px}
+.progress-meta {display:flex;
+  justify-content:space-between;
+  color:var(--muted);
+  font-size:13px}
+.progress-track {height:8px;
+  background:#0b0d12;
+  border-radius:999px;
+  overflow:hidden}
+.progress-bar {height:100%;
+  width:0;
+  background:linear-gradient(90deg,var(--primary),var(--primary-2))}
+.full {width:100%}
+.mini-list {display:grid;
+  gap:8px}
+.mini-item {display:grid;
+  gap:3px;
+  padding:9px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--card)}
+.mini-item span {color:var(--muted);
+  font-size:12px}
+.toolbar {display:flex;
+  gap:10px;
+  margin:14px 0}
+.empty-state {border:1px dashed var(--line);
+  border-radius:12px;
+  padding:24px;
+  color:var(--muted);
+  text-align:center}
+.details-panel {border:1px solid var(--line);
+  border-radius:10px;
+  padding:12px;
+  background:#12161d}
+.message {color:var(--muted);
+  min-height:22px}
+.button-row,.card-actions {display:flex;
+  gap:8px;
+  flex-wrap:wrap}
+.sample-row {display:flex;
+  justify-content:space-between;
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px;
+  background:var(--card)}

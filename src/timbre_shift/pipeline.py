@@ -6,23 +6,22 @@ import shutil
 import sys
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable
 
 from .audio import (
-    concat_audio_files,
     export_mp3,
+    limit_audio_peak,
     middle_start,
     mix_audio,
     normalize_audio,
     polish_vocal,
     probe_duration,
-    split_audio_fixed,
 )
 from .commands import require_binary
 from .demucs import separate_vocals
 from .diagnostics import AnalyzerContext, analyze_generation
+from .generation_history import archive_generation_history
 from .library import (
     best_voice_reference,
     get_voice_model,
@@ -33,117 +32,25 @@ from .library import (
     save_voice_to_library,
     update_song_stems,
 )
+from .mix_styles import get_mix_style
 from .engines import get_engine
 from .pipeline_config import (
     PRESETS,
     EnvironmentReport,
     PipelineOptions,
-    RenderPreset,
     resolve_preset,
     seedvc_chunk_settings,
 )
-from .seed_vc import SeedVCResult, convert_singing_voice_result
+from .rvc_presets import get_rvc_preset
+from .pre_rvc_cleanup import preprocess_source_vocal_for_rvc
+from .pipeline_rvc import _postprocess_rvc_vocal, _render_rvc_variants
+from .pipeline_seedvc import _convert_seedvc_chunked, _convert_seedvc_whole
 from .vocal_segments import compact_for_conversion, restore_compact_vocals
 
 ProgressCallback = Callable[[str, int], None]
 
 
 _seedvc_chunk_settings = seedvc_chunk_settings
-
-
-def _convert_seedvc_whole(
-    options: PipelineOptions,
-    preset: RenderPreset,
-    source_vocal: Path,
-    prepared_voice: Path,
-    converted_dir: Path,
-    actual_device: str,
-    allow_cpu_fallback: bool,
-) -> SeedVCResult:
-    return convert_singing_voice_result(
-        seed_vc_dir=options.seed_vc_dir,
-        source_vocal=source_vocal,
-        target_voice=prepared_voice,
-        output_dir=converted_dir,
-        diffusion_steps=preset.diffusion_steps,
-        length_adjust=options.length_adjust,
-        inference_cfg_rate=preset.inference_cfg_rate,
-        semi_tone_shift=options.semi_tone_shift,
-        fp16=options.fp16 if options.fp16 is not None else False,
-        device=actual_device,
-        target_voice_seconds=preset.reference_seconds,
-        cache_dir=options.cache_dir,
-        allow_cpu_fallback=allow_cpu_fallback,
-    )
-
-
-def _convert_seedvc_chunked(
-    options: PipelineOptions,
-    preset: RenderPreset,
-    source_vocal: Path,
-    prepared_voice: Path,
-    converted_dir: Path,
-    actual_device: str,
-    chunk_seconds: int,
-    workers: int,
-) -> SeedVCResult:
-    duration = probe_duration(source_vocal) or 0
-    if duration <= chunk_seconds * 1.25:
-        raise ValueError("Audio is too short for chunked Seed-VC conversion")
-
-    chunk_dir = converted_dir / f"chunks_{chunk_seconds}s"
-    input_dir = chunk_dir / "input"
-    output_root = chunk_dir / "output"
-    chunks = split_audio_fixed(source_vocal, input_dir, chunk_seconds)
-    if len(chunks) < 2:
-        raise ValueError("Seed-VC chunking produced fewer than two chunks")
-
-    worker_count = min(max(1, workers), len(chunks))
-    results: list[SeedVCResult | None] = [None] * len(chunks)
-
-    def convert_one(index: int, chunk: Path) -> tuple[int, SeedVCResult]:
-        result = convert_singing_voice_result(
-            seed_vc_dir=options.seed_vc_dir,
-            source_vocal=chunk,
-            target_voice=prepared_voice,
-            output_dir=output_root / f"chunk_{index:04d}",
-            diffusion_steps=preset.diffusion_steps,
-            length_adjust=options.length_adjust,
-            inference_cfg_rate=preset.inference_cfg_rate,
-            semi_tone_shift=options.semi_tone_shift,
-            fp16=options.fp16 if options.fp16 is not None else False,
-            device=actual_device,
-            target_voice_seconds=preset.reference_seconds,
-            cache_dir=options.cache_dir,
-            allow_cpu_fallback=False,
-        )
-        return index, result
-
-    start = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = [executor.submit(convert_one, index, chunk) for index, chunk in enumerate(chunks)]
-        for future in as_completed(futures):
-            index, result = future.result()
-            results[index] = result
-
-    ordered = [result for result in results if result is not None]
-    if len(ordered) != len(chunks):
-        raise RuntimeError("Seed-VC chunked conversion did not finish all chunks")
-
-    output = concat_audio_files(
-        [result.output for result in ordered],
-        converted_dir / f"converted_chunked_{chunk_seconds}s.wav",
-    )
-    elapsed = time.perf_counter() - start
-    return SeedVCResult(
-        output=output,
-        cache_hit=all(result.cache_hit for result in ordered),
-        elapsed_seconds=elapsed,
-        cache_key="chunked-" + "-".join(result.cache_key[:8] for result in ordered),
-        device_requested=actual_device,
-        device_used=actual_device,
-        cpu_fallback_used=False,
-    )
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
@@ -195,6 +102,9 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             progress(step, percent)
 
     total_start = time.perf_counter()
+    stale_variants_dir = options.output_dir / "variants"
+    if stale_variants_dir.exists():
+        shutil.rmtree(stale_variants_dir)
     metrics: dict[str, object] = {
         "voice_profile_id": options.voice_profile_id,
         "voice_profile_name": None,
@@ -221,6 +131,36 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "trained_model_dataset_seconds": None,
         "trained_model_index_path": None,
         "trained_model_status": None,
+        "rvc_preset": options.rvc_preset,
+        "rvc_index_rate": 0.0,
+        "rvc_protect": None,
+        "rvc_f0_method": None,
+        "rvc_clean_audio": None,
+        "allow_experimental_index": options.allow_experimental_index,
+        "applio_crashed": False,
+        "applio_crash_signal": None,
+        "applio_index_fallback_used": False,
+        "diction_mode": options.diction_mode,
+        "consonant_blend": None,
+        "diction_seconds": 0.0,
+        "vocal_style": options.vocal_style,
+        "style_postprocess_seconds": 0.0,
+        "safe_limiter_enabled": options.enable_safe_limiter,
+        "pre_rvc_cleanup_mode": options.pre_rvc_cleanup_mode,
+        "pre_rvc_cleanup_seconds": 0.0,
+        "pre_rvc_cleanup_output": None,
+        "mix_style": options.mix_style,
+        "vocal_gain": None,
+        "backing_gain": None,
+        "limiter_used": options.enable_safe_limiter,
+        "final_safety_limit": 0.92 if options.enable_safe_limiter else None,
+        "final_safety_limiter_seconds": 0.0,
+        "final_unlimited_wav": None,
+        "final_peak_before": None,
+        "final_peak_after": None,
+        "clipping_prevented": False,
+        "generate_variants_requested": bool(options.generate_variants),
+        "variants": [],
         "seedvc_chunked_attempted": False,
         "seedvc_chunked_used": False,
         "seedvc_chunk_seconds": 0,
@@ -265,6 +205,26 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
     metrics["engine_available"] = bool(engine_check.get("available"))
     actual_device = options.device or preset.device
     metrics["mps_requested"] = actual_device == "mps"
+    rvc_preset = get_rvc_preset(options.rvc_preset, options.allow_experimental_index)
+    requested_diction_mode = options.diction_mode or rvc_preset.diction_mode
+    requested_vocal_style = options.vocal_style or rvc_preset.vocal_style
+    metrics["rvc_preset"] = rvc_preset.id
+    metrics["diction_mode"] = requested_diction_mode
+    metrics["vocal_style"] = requested_vocal_style
+    metrics["rvc_index_rate"] = rvc_preset.index_rate
+    metrics["rvc_protect"] = rvc_preset.protect
+    metrics["rvc_f0_method"] = rvc_preset.f0_method
+    metrics["rvc_clean_audio"] = rvc_preset.clean_audio
+    effective_rvc_index_rate = (
+        float(options.rvc_index_rate)
+        if options.allow_experimental_index and options.rvc_index_rate is not None
+        else rvc_preset.index_rate
+    )
+    metrics["rvc_index_rate"] = effective_rvc_index_rate
+    mix_style = get_mix_style(options.mix_style)
+    metrics["mix_style"] = mix_style.id
+    metrics["vocal_gain"] = mix_style.vocal_gain
+    metrics["backing_gain"] = mix_style.backing_gain
 
     prepared_dir = options.work_dir / "prepared" / options.render_mode
     separated_dir = options.work_dir / "separated" / options.render_mode
@@ -448,6 +408,21 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
     if metrics["active_vocal_seconds"] is None:
         metrics["active_vocal_seconds"] = probe_duration(source_vocal)
 
+    conversion_source_vocal = source_vocal
+    if engine.requires_training:
+        cleanup_mode = options.pre_rvc_cleanup_mode if options.pre_rvc_cleanup_mode in {"off", "standard", "strong"} else "off"
+        metrics["pre_rvc_cleanup_mode"] = cleanup_mode
+        if cleanup_mode != "off":
+            update("清理 RVC 输入人声", 66)
+            step_start = time.perf_counter()
+            conversion_source_vocal = preprocess_source_vocal_for_rvc(
+                source_vocal,
+                converted_dir / "pre_rvc_cleanup" / f"source_vocal_{cleanup_mode}.wav",
+                mode=cleanup_mode,
+            )
+            metrics["pre_rvc_cleanup_seconds"] = time.perf_counter() - step_start
+            metrics["pre_rvc_cleanup_output"] = str(conversion_source_vocal)
+
     update(f"转换为目标音色（{engine.name}，{cache_label}）", 70)
     if options.engine_id == "seedvc":
         allow_cpu_fallback = preset.clip_seconds is not None and preset.clip_seconds <= 15
@@ -521,16 +496,25 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             metrics["rvc_mlx_index_path"] = voice_model.index_path
             metrics["rvc_mlx_status"] = voice_model.status
         engine_result = engine.convert(
-            source_vocal=source_vocal,
+            source_vocal=conversion_source_vocal,
             target_voice_or_model=Path(voice_model.model_path),
             output_dir=converted_dir / options.engine_id,
             options={
                 "cache_dir": options.cache_dir,
                 "index_path": voice_model.index_path,
                 "voice_model_id": voice_model.id,
+                "index_rate": effective_rvc_index_rate,
+                "protect": rvc_preset.protect,
+                "pitch_shift": rvc_preset.pitch,
+                "f0_method": rvc_preset.f0_method,
+                "clean_audio": rvc_preset.clean_audio,
             },
         )
         converted_vocal = engine_result.converted_vocal_path
+        metrics["rvc_index_rate"] = engine_result.metadata.get("index_rate", effective_rvc_index_rate)
+        metrics["applio_index_fallback_used"] = bool(engine_result.metadata.get("index_fallback_used"))
+        metrics["applio_crashed"] = bool(engine_result.metadata.get("crashed"))
+        metrics["applio_crash_signal"] = engine_result.metadata.get("crash_signal")
         metrics["trained_model_cache_hit"] = engine_result.cache_hit
         if options.engine_id == "rvc_mlx":
             metrics["rvc_mlx_cache_hit"] = engine_result.cache_hit
@@ -560,7 +544,29 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
 
     metrics["converted_vocal_wav"] = str(converted_vocal)
     raw_converted_vocal = converted_vocal
-    if options.polish_converted_vocal:
+    if options.engine_id == "rvc_applio":
+        update("增强咬字和人声修饰", 90)
+        converted_vocal, rvc_post_metrics = _postprocess_rvc_vocal(
+            converted_vocal=converted_vocal,
+            source_vocal=diagnostic_source_vocal,
+            converted_dir=converted_dir,
+            diction_mode=requested_diction_mode,
+            vocal_style=requested_vocal_style,
+            consonant_blend=rvc_preset.consonant_blend,
+        )
+        metrics.update(rvc_post_metrics)
+        metrics["polished_vocal_wav"] = str(converted_vocal)
+        if options.generate_variants:
+            update("生成 A/B 对比版本", 91)
+            metrics["variants"] = _render_rvc_variants(
+                base_vocal=raw_converted_vocal,
+                source_vocal=diagnostic_source_vocal,
+                backing_track=backing_track,
+                converted_dir=converted_dir,
+                output_dir=options.output_dir,
+                mix_style_id=mix_style.id,
+            )
+    elif options.polish_converted_vocal:
         step_start = time.perf_counter()
         update("优化换声后人声", 90)
         converted_vocal = polish_vocal(
@@ -578,6 +584,11 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             "响度统一",
         ]
 
+    dry_vocal_output = options.output_dir / "dry_vocal.wav"
+    dry_vocal_output.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(converted_vocal, dry_vocal_output)
+    metrics["output_dry_vocal_wav"] = str(dry_vocal_output)
+
     if backing_track is None:
         update("导出已换声人声", 92)
         final_output = options.output_dir / "final.wav"
@@ -590,18 +601,46 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             converted_vocal=converted_vocal,
             backing_track=backing_track,
             output=options.output_dir / "final.wav",
+            vocal_volume=mix_style.vocal_gain,
+            backing_volume=mix_style.backing_gain,
+            limiter=0.92 if options.enable_safe_limiter else 0.95,
         )
         metrics["mix_seconds"] = time.perf_counter() - step_start
 
+    if options.enable_safe_limiter:
+        update("最终防爆音处理", 94)
+        step_start = time.perf_counter()
+        limited_output = options.output_dir / "final_limited.wav"
+        unlimited_output = options.output_dir / "final_unlimited.wav"
+        unlimited_output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(final_output, unlimited_output)
+            metrics["final_unlimited_wav"] = str(unlimited_output)
+            final_output = limit_audio_peak(
+                unlimited_output,
+                limited_output,
+                peak_limit=0.92,
+            )
+            shutil.copy2(final_output, options.output_dir / "final.wav")
+            final_output = options.output_dir / "final.wav"
+            metrics["final_safety_limiter_seconds"] = time.perf_counter() - step_start
+        except Exception as exc:
+            metrics["limiter_used"] = False
+            metrics["final_safety_limiter_error"] = str(exc)
+
     final_mp3 = None
+    dry_vocal_mp3 = None
     if preset.output_mp3:
         update("导出 MP3", 96)
         step_start = time.perf_counter()
         final_mp3 = export_mp3(final_output, options.output_dir / "final.mp3")
         metrics["mp3_export_seconds"] = time.perf_counter() - step_start
+        step_start = time.perf_counter()
+        dry_vocal_mp3 = export_mp3(dry_vocal_output, options.output_dir / "dry_vocal.mp3")
+        metrics["dry_vocal_mp3_export_seconds"] = time.perf_counter() - step_start
 
     update("生成诊断报告", 98)
-    metrics["diagnostics"] = analyze_generation(
+    diagnostics = analyze_generation(
         AnalyzerContext(
             source_vocal=diagnostic_source_vocal,
             converted_vocal=raw_converted_vocal,
@@ -611,11 +650,39 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             active_ratio=metrics["active_ratio"] if isinstance(metrics["active_ratio"], float) else None,
         )
     )
+    metrics["diagnostics"] = diagnostics
+    try:
+        final_track = diagnostics["results"][0]["tracks"]["final_mix"]
+        metrics["final_peak_after"] = final_track.get("peak")
+        metrics["clipping_prevented"] = bool(options.enable_safe_limiter and not final_track.get("clipping_ratio"))
+    except (KeyError, IndexError, TypeError, AttributeError):
+        pass
 
     metrics["total_seconds"] = time.perf_counter() - total_start
     metrics["output_wav"] = str(final_output)
     metrics["output_mp3"] = str(final_mp3) if final_mp3 else None
+    metrics["output_dry_vocal_mp3"] = str(dry_vocal_mp3) if dry_vocal_mp3 else None
     metrics_path = options.output_dir / "metrics.json"
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        history_dir = archive_generation_history(
+            options.output_dir,
+            metrics,
+            voice_profile_id=voice_profile.id if voice_profile else options.voice_profile_id,
+            voice_profile_name=voice_profile.name if voice_profile else options.voice_name,
+            song_id=song_record.id if song_record else options.song_id,
+            song_title=song_record.title if song_record else options.song_title,
+            engine_id=options.engine_id,
+            render_mode=options.render_mode,
+        )
+        metrics["history_dir"] = str(history_dir)
+        metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+        (history_dir / "metrics.json").write_text(
+            json.dumps(metrics, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        metrics["history_error"] = str(exc)
+        metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     return final_output

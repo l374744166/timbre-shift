@@ -36,10 +36,12 @@ class LibraryTests(unittest.TestCase):
             audio.write_bytes(b"voice")
             other_audio.write_bytes(b"other")
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
-                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
-                patch("timbre_shift.library._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
-                patch("timbre_shift.library.probe_duration", return_value=5.0):
+            with patch("timbre_shift.library_voices.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_samples.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_voices._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
+                patch("timbre_shift.library_common.probe_duration", return_value=5.0):
                 allowed = save_voice_to_library(
                     audio,
                     "Mine",
@@ -68,9 +70,11 @@ class LibraryTests(unittest.TestCase):
             audio = root / "voice.wav"
             audio.write_bytes(b"same")
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
-                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
-                patch("timbre_shift.library.probe_duration", return_value=5.0):
+            with patch("timbre_shift.library_voices.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_samples.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_voices._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_common.probe_duration", return_value=5.0):
                 first = save_voice_to_library(audio, "One", library_dir=root / "library", db_path=db_path)
                 second = save_voice_to_library(audio, "Two", library_dir=root / "library", db_path=db_path)
 
@@ -86,10 +90,12 @@ class LibraryTests(unittest.TestCase):
             raw_audio.write_bytes(b"raw")
             clean_audio.write_bytes(b"clean")
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
-                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
-                patch("timbre_shift.library._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
-                patch("timbre_shift.library.probe_duration", return_value=5.0):
+            with patch("timbre_shift.library_voices.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_samples.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_voices._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
+                patch("timbre_shift.library_common.probe_duration", return_value=5.0):
                 voice = save_voice_to_library(
                     raw_audio,
                     "Voice",
@@ -114,10 +120,12 @@ class LibraryTests(unittest.TestCase):
             first_audio.write_bytes(b"first")
             second_audio.write_bytes(b"second")
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
-                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
-                patch("timbre_shift.library._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
-                patch("timbre_shift.library.probe_duration", return_value=5.0):
+            with patch("timbre_shift.library_voices.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_samples.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_voices._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._concat_audio_files", side_effect=lambda sources, output: self.fake_normalize(sources[0], output)), \
+                patch("timbre_shift.library_common.probe_duration", return_value=5.0):
                 voice = save_voice_to_library(
                     first_audio,
                     "Voice",
@@ -149,8 +157,8 @@ class LibraryTests(unittest.TestCase):
             vocals.write_bytes(b"vocals")
             backing.write_bytes(b"backing")
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
-                patch("timbre_shift.library.probe_duration", return_value=60.0):
+            with patch("timbre_shift.library_songs.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_common.probe_duration", return_value=60.0):
                 song = save_song_to_library(audio, "Song", library_dir=root / "library", db_path=db_path)
 
             updated = update_song_stems(song.id, vocals, backing, "htdemucs", "cache", db_path=db_path)
@@ -169,9 +177,12 @@ class LibraryTests(unittest.TestCase):
             voice_audio.write_bytes(b"voice")
             song_audio.write_bytes(b"song")
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=self.fake_normalize), \
-                patch("timbre_shift.library._make_preview_mp3", side_effect=self.fake_preview), \
-                patch("timbre_shift.library.probe_duration", return_value=5.0):
+            with patch("timbre_shift.library_voices.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_samples.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_songs.normalize_audio", side_effect=self.fake_normalize), \
+                patch("timbre_shift.library_voices._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_samples._make_preview_mp3", side_effect=self.fake_preview), \
+                patch("timbre_shift.library_common.probe_duration", return_value=5.0):
                 voice = save_voice_to_library(voice_audio, "Voice", library_dir=root / "library", db_path=db_path)
                 song = save_song_to_library(song_audio, "Song", library_dir=root / "library", db_path=db_path)
 

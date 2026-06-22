@@ -25,5 +25,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+timbre_shift = ["web_static/*.css", "web_static/*.js", "web_static/**/*.css", "web_static/**/*.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

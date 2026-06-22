@@ -120,6 +120,32 @@ timbre-shift rvc-mlx train --voice-id voice_xxx
 timbre-shift rvc-mlx convert --voice-id voice_xxx --source-vocal vocals.wav --output outputs/rvc.wav
 ```
 
+## RVC Diction And Style Control
+
+RVC and Applio primarily transfer vocal timbre. They do not automatically turn
+the source singer's diction, phrasing, breath timing, vibrato, or emotion into
+the target singer's style. Timbre Shift therefore keeps Applio RVC stable by
+default and adds conservative post-processing controls:
+
+- RVC presets choose safe Applio parameters. The default preset keeps
+  `index_rate=0.0` because macOS + FAISS index previously triggered native
+  crashes. Experimental index presets require an explicit UI opt-in and fall
+  back to no-index if the subprocess crashes.
+- Diction enhancement lightly mixes a high-passed consonant layer from the
+  source vocal back into the converted vocal. This can improve Chinese lyric
+  clarity, but stronger settings may bring back traces of the original singer.
+- Vocal style post-processing applies light EQ, compression, presence, warmth,
+  and limiting presets such as neutral, close intimate, soft ballad, warm low
+  male, and bright pop. These are mix styles, not true singing-style transfer.
+- A/B variants reuse one Applio conversion and render multiple post-processed
+  versions under `outputs/web/variants/` so listening tests are faster.
+
+For stronger target style, improve the voice library as well: add multiple clean
+samples covering low, mid, and high notes, soft and strong singing, fast phrases,
+long notes, and dry spoken or sung material. A model trained from one separated
+song may learn that song's reverb, compression, separation artifacts, and narrow
+phrasing range.
+
 ## M2 Max Modes
 
 The web page defaults to `m2max_hq_30`, which uses Apple Silicon MPS, a short

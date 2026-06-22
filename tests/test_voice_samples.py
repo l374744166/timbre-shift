@@ -37,10 +37,10 @@ class VoiceSampleTests(unittest.TestCase):
                 db_path=db_path,
             )
 
-            with patch("timbre_shift.library.normalize_audio", side_effect=fake_normalize), \
-                patch("timbre_shift.library.probe_duration", return_value=12.0), \
-                patch("timbre_shift.library._make_preview_mp3", side_effect=lambda source, output: fake_normalize(source, output)), \
-                patch("timbre_shift.library.analyze_generation", return_value={"issues": []}):
+            with patch("timbre_shift.library_samples.normalize_audio", side_effect=fake_normalize), \
+                patch("timbre_shift.library_common.probe_duration", return_value=12.0), \
+                patch("timbre_shift.library_samples._make_preview_mp3", side_effect=lambda source, output: fake_normalize(source, output)), \
+                patch("timbre_shift.library_samples.analyze_generation", return_value={"issues": []}):
                 first = add_voice_sample(
                     profile.id,
                     raw,

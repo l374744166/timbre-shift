@@ -2,40 +2,54 @@
 
 from __future__ import annotations
 
-import cgi
 import json
-import math
 import mimetypes
-import time
-import wave
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict
 from urllib.parse import parse_qs, quote, urlparse
 
-from .demucs import separate_vocals
+from .generation_history import list_generation_history
+from .history_actions import delete_history_job, restore_history_job
 from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
-    add_voice_sample_to_profile,
+    archive_voice_sample,
     archive_voice_model,
     archive_voice_profile,
+    create_empty_voice_profile,
     list_voice_samples,
     list_voice_models,
-    save_voice_to_library,
+    refresh_voice_profile_references,
 )
-from .pipeline import PRESETS, PipelineOptions, check_environment, run_demo
-from .rvc_applio import prepare_applio_dataset, train_applio_model
-from .vocal_segments import compact_for_conversion
+from .pipeline import check_environment
+from .variant_actions import record_variant_feedback, select_variant
+from .voice_preferences import save_voice_preference
+from .web_generation import generate_song_payload
+from .web_queries import voice_models_payload, voice_preference_payload, voice_samples_payload
+from .web_results import create_test_result, write_error_metrics
+from .web_serializers import serialize_voice_sample
 from .web_state import PROGRESS
 from .web_template import page_html
+from .web_training import prepare_applio_payload, train_applio_payload
+from .web_uploads import (
+    read_form_fields as parse_form_fields,
+    read_uploads as parse_uploads,
+    read_voice_library_upload as parse_voice_library_upload,
+    read_voice_sample_upload as parse_voice_sample_upload,
+)
 from .web_utils import safe_download_filename, safe_filename
+from .web_voice_tasks import add_voice_samples_from_uploads, save_voice_profile_from_uploads
 
 
 ROOT = Path.cwd()
 UPLOAD_ROOT = ROOT / "data" / "raw" / "web_uploads"
 OUTPUT_DIR = ROOT / "outputs" / "web"
+HISTORY_ROOT = ROOT / "outputs" / "history"
+STATIC_ROOT = Path(__file__).with_name("web_static")
+
+
 class AppHandler(BaseHTTPRequestHandler):
     seed_vc_dir: Path = Path("vendor/seed-vc")
 
@@ -45,6 +59,9 @@ class AppHandler(BaseHTTPRequestHandler):
         if request_path == "/":
             self.send_html(page_html())
             return
+        if request_path.startswith("/static/"):
+            self.send_static_file(request_path.removeprefix("/static/"))
+            return
         if request_path == "/api/check":
             report = check_environment(self.seed_vc_dir)
             self.send_json({"ready": report.ready, "missing": report.missing, "text": report.to_text()})
@@ -52,27 +69,39 @@ class AppHandler(BaseHTTPRequestHandler):
         if request_path == "/api/progress":
             self.send_json(PROGRESS.snapshot())
             return
+        if request_path == "/api/history":
+            self.send_json({"jobs": list_generation_history(HISTORY_ROOT)})
+            return
+        if request_path == "/api/voice-preference":
+            query = parse_qs(parsed.query)
+            voice_id = (query.get("voice_id") or [""])[0]
+            self.send_json(voice_preference_payload(voice_id))
+            return
+        if request_path == "/api/voice-samples":
+            query = parse_qs(parsed.query)
+            voice_id = (query.get("voice_id") or [""])[0]
+            self.send_json(voice_samples_payload(voice_id))
+            return
         if request_path == "/api/voice-models":
             query = parse_qs(parsed.query)
             voice_id = (query.get("voice_id") or [""])[0]
             engine_id = (query.get("engine_id") or ["rvc_applio"])[0]
-            if not voice_id:
-                self.send_json({"models": []})
+            self.send_json(voice_models_payload(voice_id, engine_id))
+            return
+        if request_path.startswith("/download/history/"):
+            parts = [safe_filename(part) for part in request_path.removeprefix("/download/history/").split("/") if part]
+            if len(parts) != 2:
+                self.send_error(HTTPStatus.NOT_FOUND)
                 return
-            models = [
-                {
-                    "id": model.id,
-                    "name": model.model_name,
-                    "engine_id": model.engine_id,
-                    "status": model.status,
-                    "dataset_seconds": model.dataset_seconds,
-                    "training_seconds": model.training_seconds,
-                    "model_path": model.model_path,
-                    "updated_at": model.updated_at,
-                }
-                for model in list_voice_models(voice_id, engine_id=engine_id, db_path=DEFAULT_DB_PATH)
-            ]
-            self.send_json({"models": models})
+            download_name = parse_qs(parsed.query).get("name", [None])[0]
+            self.send_file(HISTORY_ROOT / parts[0] / parts[1], download_name=download_name)
+            return
+        if request_path.startswith("/download/variants/"):
+            download_name = parse_qs(parsed.query).get("name", [None])[0]
+            self.send_file(
+                OUTPUT_DIR / "variants" / safe_filename(request_path.removeprefix("/download/variants/")),
+                download_name=download_name,
+            )
             return
         if request_path.startswith("/download/"):
             download_name = parse_qs(parsed.query).get("name", [None])[0]
@@ -86,6 +115,25 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         parsed = urlparse(self.path)
         request_path = parsed.path
+        if request_path.startswith("/static/"):
+            self.send_static_file(request_path.removeprefix("/static/"), head_only=True)
+            return
+        if request_path.startswith("/download/history/"):
+            parts = [safe_filename(part) for part in request_path.removeprefix("/download/history/").split("/") if part]
+            if len(parts) != 2:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            download_name = parse_qs(parsed.query).get("name", [None])[0]
+            self.send_file(HISTORY_ROOT / parts[0] / parts[1], head_only=True, download_name=download_name)
+            return
+        if request_path.startswith("/download/variants/"):
+            download_name = parse_qs(parsed.query).get("name", [None])[0]
+            self.send_file(
+                OUTPUT_DIR / "variants" / safe_filename(request_path.removeprefix("/download/variants/")),
+                head_only=True,
+                download_name=download_name,
+            )
+            return
         if request_path.startswith("/download/"):
             download_name = parse_qs(parsed.query).get("name", [None])[0]
             self.send_file(
@@ -97,61 +145,103 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if self.path == "/api/cancel-task":
+            PROGRESS.cancel()
+            self.send_json({"message": "已请求停止当前任务", "progress": PROGRESS.snapshot()})
+            return
+        if self.path == "/api/voice-preference":
+            try:
+                fields = self.read_form_fields()
+                voice_profile_id = str(fields.get("voice_profile_id", "")).strip()
+                preference = save_voice_preference(
+                    voice_profile_id,
+                    {
+                        "voice_profile_id": voice_profile_id,
+                        "engine_id": fields.get("engine_id"),
+                        "rvc_goal": fields.get("rvc_goal") or fields.get("rvc_preset"),
+                        "diction_mode": fields.get("diction_mode"),
+                        "vocal_style": fields.get("vocal_style"),
+                        "rvc_index_enabled": fields.get("rvc_index_enabled") in {"1", "true", "on"},
+                        "rvc_index_rate": fields.get("rvc_index_rate"),
+                        "mix_style": fields.get("mix_style"),
+                        "pre_rvc_cleanup_mode": fields.get("pre_rvc_cleanup_mode"),
+                        "selected_variant": fields.get("selected_variant"),
+                    },
+                )
+                self.send_json({"message": "已保存为该音色默认参数", "preference": preference})
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/history-restore":
+            try:
+                fields = self.read_form_fields()
+                job_id = safe_filename(str(fields.get("job_id", "")))
+                self.send_json(restore_history_job(HISTORY_ROOT, OUTPUT_DIR, job_id))
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/history-delete":
+            try:
+                fields = self.read_form_fields()
+                job_id = safe_filename(str(fields.get("job_id", "")))
+                self.send_json(delete_history_job(HISTORY_ROOT, job_id))
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/select-variant":
+            try:
+                fields = self.read_form_fields()
+                variant_id = safe_filename(str(fields.get("variant_id", "")))
+                self.send_json(select_variant(OUTPUT_DIR, variant_id))
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/variant-feedback":
+            try:
+                fields = self.read_form_fields()
+                variant_id = safe_filename(str(fields.get("variant_id", "")))
+                self.send_json(record_variant_feedback(OUTPUT_DIR, variant_id))
+            except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
         if self.path == "/api/add-voice-sample":
             try:
                 voice_uploads, voice_name, voice_source_type, voice_profile_id = self.read_voice_sample_upload()
-                if not voice_profile_id:
-                    raise ValueError("先选择一个已保存音色")
-                sample = None
-                for index, voice_path in enumerate(voice_uploads, start=1):
-                    source_type = "upload_voice"
-                    clean_path = voice_path
-                    if voice_source_type == "mixed_voice":
-                        PROGRESS.reset(f"高质量分离素材人声 {index}/{len(voice_uploads)}", 5, "running")
-                        separated = separate_vocals(
-                            voice_path,
-                            output_dir=ROOT / "data" / "processed" / "web" / "voice_samples",
-                            model="htdemucs_ft",
-                            cache_dir=ROOT / "data" / "cache",
-                            overlap=0.25,
-                            shifts=0,
-                        )
-                        clean_path = separated.vocals
-                        source_type = "separated_compact_voice"
-                        try:
-                            PROGRESS.update(f"筛选有效素材人声片段 {index}/{len(voice_uploads)}", 70)
-                            compact = compact_for_conversion(
-                                separated.vocals,
-                                clean_path.parent / f"compact_voice_{index}.wav",
-                            )
-                            clean_path = compact.audio
-                        except ValueError:
-                            source_type = "separated_voice"
-                    PROGRESS.update(f"添加素材并刷新参考音频 {index}/{len(voice_uploads)}", 85)
-                    sample = add_voice_sample_to_profile(
-                        voice_id=voice_profile_id,
-                        input_audio=voice_path,
-                        clean_audio=clean_path,
-                        name=voice_name if len(voice_uploads) == 1 else f"{voice_name} {index}",
-                        source_type=source_type,
-                        library_dir=DEFAULT_LIBRARY_DIR,
-                        db_path=DEFAULT_DB_PATH,
+                self.send_json(
+                    add_voice_samples_from_uploads(
+                        voice_uploads,
+                        voice_name,
+                        voice_source_type,
+                        voice_profile_id,
+                        ROOT,
                     )
-                sample_count = len(list_voice_samples(voice_profile_id, db_path=DEFAULT_DB_PATH))
-                PROGRESS.update("素材已添加", 100, "completed")
+                )
+            except Exception as exc:
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/delete-voice-sample":
+            try:
+                fields = self.read_form_fields()
+                voice_id = str(fields.get("voice_profile_id", "")).strip()
+                sample_id = str(fields.get("sample_id", "")).strip()
+                if not voice_id or not sample_id:
+                    raise ValueError("请选择要删除的素材")
+                archive_voice_sample(sample_id, db_path=DEFAULT_DB_PATH)
+                refresh_voice_profile_references(voice_id, library_dir=DEFAULT_LIBRARY_DIR, db_path=DEFAULT_DB_PATH)
+                samples = list_voice_samples(voice_id, db_path=DEFAULT_DB_PATH)
                 self.send_json(
                     {
-                        "id": sample.id if sample else None,
-                        "voice_profile_id": voice_profile_id,
-                        "sample_count": sample_count,
-                        "added_count": len(voice_uploads),
-                        "quality_score": sample.quality_score if sample else None,
-                        "noise_score": sample.noise_score if sample else None,
-                        "message": "素材已添加",
+                        "message": "素材已删除",
+                        "sample_count": len(samples),
+                        "samples": [serialize_voice_sample(sample) for sample in samples],
                     }
                 )
             except Exception as exc:
-                PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
@@ -164,7 +254,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 archive_voice_profile(voice_id, db_path=DEFAULT_DB_PATH)
                 self.send_json({"id": voice_id, "message": "音色已删除"})
             except Exception as exc:
-                PROGRESS.fail(str(exc))
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
@@ -177,144 +270,74 @@ class AppHandler(BaseHTTPRequestHandler):
                 archive_voice_model(model_id, db_path=DEFAULT_DB_PATH)
                 self.send_json({"id": model_id, "message": "模型已删除"})
             except Exception as exc:
-                PROGRESS.fail(str(exc))
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/create-voice-profile":
+            try:
+                fields = self.read_form_fields()
+                voice_name = str(fields.get("voice_name", "")).strip() or "未命名音色库"
+                profile = create_empty_voice_profile(
+                    name=voice_name,
+                    description="RVC training library",
+                    library_dir=DEFAULT_LIBRARY_DIR,
+                    db_path=DEFAULT_DB_PATH,
+                )
+                self.send_json(
+                    {
+                        "id": profile.id,
+                        "name": profile.name,
+                        "source_type": profile.source_type,
+                        "sample_count": 0,
+                        "added_count": 0,
+                        "message": "音色库已创建，请添加训练素材",
+                    }
+                )
+            except Exception as exc:
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
         if self.path == "/api/applio-prepare":
             try:
                 fields = self.read_form_fields()
-                voice_id = str(fields.get("voice_profile_id", "")).strip()
-                if not voice_id:
-                    raise ValueError("先选择一个已保存音色")
-                PROGRESS.reset("准备 Applio RVC 数据集", 5, "running")
-                result = prepare_applio_dataset(
-                    voice_id,
-                    library_dir=DEFAULT_LIBRARY_DIR,
-                    db_path=DEFAULT_DB_PATH,
-                )
-                PROGRESS.update("Applio RVC 数据集已准备", 100, "completed")
-                self.send_json(
-                    {
-                        "dataset_path": str(result.dataset_path),
-                        "metadata_path": str(result.metadata_path),
-                        "total_seconds": result.total_seconds,
-                        "sample_count": result.sample_count,
-                        "segment_count": result.segment_count,
-                        "warnings": result.warnings,
-                        "message": "数据集已准备",
-                    }
-                )
+                self.send_json(prepare_applio_payload(fields))
             except Exception as exc:
-                PROGRESS.fail(str(exc))
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
         if self.path == "/api/applio-train":
             try:
                 fields = self.read_form_fields()
-                voice_id = str(fields.get("voice_profile_id", "")).strip()
-                if not voice_id:
-                    raise ValueError("先选择一个已保存音色")
-                epochs = int(fields.get("epochs", 10) or 10)
-                if epochs < 1 or epochs > 120:
-                    raise ValueError("训练轮数需要在 1 到 120 之间")
-                PROGRESS.reset("开始 Applio RVC 训练", 2, "running")
-                model = train_applio_model(
-                    voice_id,
-                    library_dir=DEFAULT_LIBRARY_DIR,
-                    db_path=DEFAULT_DB_PATH,
-                    epochs=epochs,
-                    batch_size=4,
-                    sample_rate=40000,
-                    progress=lambda step, percent: PROGRESS.update(step, percent),
-                )
-                PROGRESS.update("Applio RVC 训练完成", 100, "completed")
-                self.send_json(
-                    {
-                        "id": model.id,
-                        "name": model.model_name,
-                        "model_path": model.model_path,
-                        "index_path": model.index_path,
-                        "dataset_seconds": model.dataset_seconds,
-                        "training_seconds": model.training_seconds,
-                        "status": model.status,
-                        "message": "训练完成",
-                    }
-                )
+                self.send_json(train_applio_payload(fields))
             except Exception as exc:
-                PROGRESS.fail(str(exc))
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
         if self.path == "/api/save-voice":
             try:
                 voice_uploads, voice_name, voice_source_type = self.read_voice_library_upload()
-                prepared_uploads: list[tuple[Path, Path, str]] = []
-                for index, voice_path in enumerate(voice_uploads, start=1):
-                    source_type = "upload_voice"
-                    clean_path = voice_path
-                    if voice_source_type == "mixed_voice":
-                        PROGRESS.reset(f"高质量分离音色人声 {index}/{len(voice_uploads)}", 5, "running")
-                        separated = separate_vocals(
-                            voice_path,
-                            output_dir=ROOT / "data" / "processed" / "web" / "voice_separated",
-                            model="htdemucs_ft",
-                            cache_dir=ROOT / "data" / "cache",
-                            overlap=0.25,
-                            shifts=0,
-                        )
-                        clean_path = separated.vocals
-                        source_type = "separated_compact_voice"
-                        try:
-                            PROGRESS.update(f"筛选有效音色人声片段 {index}/{len(voice_uploads)}", 70)
-                            compact = compact_for_conversion(
-                                separated.vocals,
-                                clean_path.parent / f"compact_voice_{index}.wav",
-                            )
-                            clean_path = compact.audio
-                        except ValueError:
-                            source_type = "separated_voice"
-                    prepared_uploads.append((voice_path, clean_path, source_type))
-                PROGRESS.update("保存音色", 80)
-                first_voice_path, first_clean_path, first_source_type = prepared_uploads[0]
-                profile = save_voice_to_library(
-                    input_audio=first_voice_path,
-                    clean_audio=first_clean_path,
-                    name=voice_name,
-                    description=None,
-                    source_type=first_source_type,
-                    rights_status="own_voice",
-                    allowed_as_target=True,
-                    library_dir=DEFAULT_LIBRARY_DIR,
-                    db_path=DEFAULT_DB_PATH,
-                )
-                for index, (extra_voice_path, extra_clean_path, extra_source_type) in enumerate(prepared_uploads[1:], start=2):
-                    percent = min(98, 80 + int(index / len(prepared_uploads) * 15))
-                    PROGRESS.update(f"追加音色素材 {index}/{len(prepared_uploads)}", percent)
-                    add_voice_sample_to_profile(
-                        voice_id=profile.id,
-                        input_audio=extra_voice_path,
-                        clean_audio=extra_clean_path,
-                        name=f"{voice_name} {index}",
-                        source_type=extra_source_type,
-                        library_dir=DEFAULT_LIBRARY_DIR,
-                        db_path=DEFAULT_DB_PATH,
-                    )
-                sample_count = len(list_voice_samples(profile.id, db_path=DEFAULT_DB_PATH))
-                PROGRESS.update("音色已保存", 100, "completed")
-                self.send_json(
-                    {
-                        "id": profile.id,
-                        "name": profile.name,
-                        "source_type": first_source_type,
-                        "sample_count": sample_count,
-                        "added_count": len(prepared_uploads),
-                        "message": "音色已保存",
-                    }
-                )
+                self.send_json(save_voice_profile_from_uploads(voice_uploads, voice_name, voice_source_type, ROOT))
             except Exception as exc:
-                PROGRESS.fail(str(exc))
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
@@ -324,242 +347,41 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             PROGRESS.reset("接收上传文件", 1, "running")
             files, fields = self.read_uploads()
-            mode = str(fields["mode"])
-            engine_id = str(fields["engine_id"])
-            skip_separation = bool(fields["skip_separation"])
-            if engine_id in {"rvc_applio", "rvc_mlx"}:
-                voice_id = str(fields["voice_profile_id"])
-                selected_model_id = str(fields["voice_model_id"])
-                ready_models = list_voice_models(voice_id, engine_id=engine_id, db_path=DEFAULT_DB_PATH)
-                ready_models = [model for model in ready_models if model.status == "ready"]
-                if not selected_model_id and not ready_models:
-                    raise ValueError("Applio RVC 还没有可用模型，请先训练模型再生成")
-            PROGRESS.update("检查运行环境", 3)
-            report = check_environment(self.seed_vc_dir)
-            if report.ready:
-                final_mix = run_demo(
-                    PipelineOptions(
-                        voice=files.get("voice"),
-                        song=files.get("song"),
-                        seed_vc_dir=self.seed_vc_dir,
-                        work_dir=ROOT / "data" / "processed" / "web",
-                        output_dir=OUTPUT_DIR,
-                        cache_dir=ROOT / "data" / "cache",
-                        library_dir=DEFAULT_LIBRARY_DIR,
-                        library_db_path=DEFAULT_DB_PATH,
-                        render_mode=mode,
-                        engine_id=engine_id,
-                        voice_model_id=str(fields["voice_model_id"]) or None,
-                        device="mps",
-                        skip_separation=skip_separation,
-                        voice_profile_id=str(fields["voice_profile_id"]) or None,
-                        song_id=str(fields["song_id"]) or None,
-                        save_voice_to_library=bool(fields["save_voice"]),
-                        save_song_to_library=bool(fields["save_song"]),
-                        voice_name=str(fields["voice_name"]) or None,
-                        song_title=str(fields["song_title"]) or None,
-                        rights_confirmed=bool(fields["rights_confirmed"]),
-                        source_mode="clean_vocal" if skip_separation else "full_song",
-                    ),
-                    progress=lambda step, percent: PROGRESS.update(step, percent),
-                )
-                PROGRESS.update("生成完成", 100, "completed")
-                message = f"{PRESETS[mode].name}生成完成"
-                final_mp3 = OUTPUT_DIR / "final.mp3"
-                metrics_path = OUTPUT_DIR / "metrics.json"
-                metrics_payload = {}
-                if metrics_path.exists():
-                    metrics_payload = json.loads(metrics_path.read_text(encoding="utf-8"))
-                self.send_json(
-                    {
-                        "download_url": f"/download/{final_mp3.name if final_mp3.exists() else final_mix.name}",
-                        "download_mp3_url": f"/download/{final_mp3.name}" if final_mp3.exists() else None,
-                        "download_wav_url": f"/download/{final_mix.name}",
-                        "mp3_filename": final_mp3.name if final_mp3.exists() else None,
-                        "wav_filename": final_mix.name,
-                        "mode": "real",
-                        "message": message,
-                        "render_mode": mode,
-                        "engine_id": engine_id,
-                        "voice_model_id": fields["voice_model_id"],
-                        "skip_separation": skip_separation,
-                        "voice_profile_id": fields["voice_profile_id"],
-                        "song_id": fields["song_id"],
-                        "metrics": metrics_payload,
-                    }
-                )
-            else:
-                PROGRESS.update("生成测试结果", 50)
-                test_output = create_test_result(OUTPUT_DIR / "test-result.wav")
-                PROGRESS.update("测试生成完成", 100, "completed")
-                self.send_json(
-                    {
-                        "download_url": f"/download/{test_output.name}",
-                        "filename": test_output.name,
-                        "mode": "test",
-                        "message": "测试生成完成；真实换声还缺少 ffmpeg、Demucs 或 Seed-VC",
-                        "missing": report.missing,
-                    }
-                )
+            payload = generate_song_payload(
+                seed_vc_dir=self.seed_vc_dir,
+                files=files,
+                fields=fields,
+                root=ROOT,
+                output_dir=OUTPUT_DIR,
+            )
+            if payload.get("mode") == "real":
+                message = "歌曲生成完成"
+                payload["message"] = message
+            self.send_json(payload)
         except BrokenPipeError as exc:
             if PROGRESS.snapshot().get("status") == "completed":
                 return
             PROGRESS.fail(str(exc))
             write_error_metrics(OUTPUT_DIR / "metrics.json", str(exc))
         except Exception as exc:
-            PROGRESS.fail(str(exc))
+            if PROGRESS.is_cancelled():
+                PROGRESS.cancel()
+            else:
+                PROGRESS.fail(str(exc))
             write_error_metrics(OUTPUT_DIR / "metrics.json", str(exc))
             self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
-    def read_uploads(self) -> Tuple[Dict[str, Path], Dict[str, object]]:
-        content_type = self.headers.get("content-type", "")
-        if not content_type.startswith("multipart/form-data"):
-            raise ValueError("请上传音频文件")
-
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
-        timestamp = str(int(time.time()))
-        target_dir = UPLOAD_ROOT / timestamp
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        saved: Dict[str, Path] = {}
-        for field in ["voice", "song"]:
-            items = self._upload_items(form, field)
-            if not items:
-                continue
-            item = items[0]
-            filename = safe_filename(item.filename)
-            path = target_dir / f"{field}-{filename}"
-            with path.open("wb") as output:
-                while True:
-                    chunk = item.file.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-            saved[field] = path
-        mode = form.getfirst("mode", "m2max_hq_30")
-        if mode not in PRESETS:
-            mode = "m2max_hq_30"
-        engine_id = form.getfirst("engine_id", "seedvc")
-        if engine_id not in {"seedvc", "rvc_applio", "rvc_mlx"}:
-            engine_id = "seedvc"
-        skip_separation = False
-        fields: Dict[str, object] = {
-            "mode": mode,
-            "engine_id": engine_id,
-            "voice_model_id": form.getfirst("voice_model_id", ""),
-            "skip_separation": skip_separation,
-            "voice_profile_id": form.getfirst("voice_profile_id", ""),
-            "song_id": form.getfirst("song_id", ""),
-            "save_voice": False,
-            "save_song": False,
-            "voice_name": form.getfirst("voice_name", ""),
-            "song_title": form.getfirst("song_title", ""),
-            "rights_confirmed": True,
-        }
-        if not fields["voice_profile_id"] and "voice" not in saved:
-            raise ValueError("请选择本地音色，或上传一个新声音样本")
-        if not fields["song_id"] and "song" not in saved:
-            raise ValueError("请选择本地歌曲，或上传一个新歌曲文件")
-        return saved, fields
+    def read_uploads(self) -> tuple[dict[str, Path], dict[str, object]]:
+        return parse_uploads(self.rfile, self.headers, UPLOAD_ROOT)
 
     def read_form_fields(self) -> Dict[str, object]:
-        content_type = self.headers.get("content-type", "")
-        if not content_type.startswith("multipart/form-data"):
-            raise ValueError("表单格式不正确")
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
-        return {key: form.getfirst(key, "") for key in form.keys()}
+        return parse_form_fields(self.rfile, self.headers)
 
-    def _upload_items(self, form: cgi.FieldStorage, field: str) -> list[cgi.FieldStorage]:
-        raw_items = form[field] if field in form else []
-        items = raw_items if isinstance(raw_items, list) else [raw_items]
-        return [item for item in items if getattr(item, "filename", "")]
+    def read_voice_library_upload(self) -> tuple[list[Path], str, str]:
+        return parse_voice_library_upload(self.rfile, self.headers, UPLOAD_ROOT)
 
-    def _save_upload_items(self, items: list[cgi.FieldStorage], target_dir: Path, prefix: str) -> list[Path]:
-        paths: list[Path] = []
-        for index, item in enumerate(items, start=1):
-            filename = safe_filename(item.filename)
-            path = target_dir / f"{prefix}-{index}-{filename}"
-            with path.open("wb") as output:
-                while True:
-                    chunk = item.file.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-            paths.append(path)
-        return paths
-
-    def read_voice_library_upload(self) -> Tuple[list[Path], str, str]:
-        content_type = self.headers.get("content-type", "")
-        if not content_type.startswith("multipart/form-data"):
-            raise ValueError("请上传声音样本")
-
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
-        items = self._upload_items(form, "voice")
-        if not items:
-            raise ValueError("先选择一个或多个声音样本")
-
-        timestamp = str(int(time.time()))
-        target_dir = UPLOAD_ROOT / timestamp
-        target_dir.mkdir(parents=True, exist_ok=True)
-        paths = self._save_upload_items(items, target_dir, "voice-library")
-
-        raw_name = str(form.getfirst("voice_name", "")).strip()
-        voice_name = raw_name or Path(safe_filename(items[0].filename)).stem or "我的声音"
-        voice_source_type = str(form.getfirst("voice_source_type", "clean_voice"))
-        if voice_source_type not in {"clean_voice", "mixed_voice"}:
-            voice_source_type = "clean_voice"
-        return paths, voice_name, voice_source_type
-
-    def read_voice_sample_upload(self) -> Tuple[list[Path], str, str, str]:
-        content_type = self.headers.get("content-type", "")
-        if not content_type.startswith("multipart/form-data"):
-            raise ValueError("请上传声音素材")
-
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
-        items = self._upload_items(form, "voice")
-        if not items:
-            raise ValueError("先选择一个或多个声音素材")
-
-        timestamp = str(int(time.time()))
-        target_dir = UPLOAD_ROOT / timestamp
-        target_dir.mkdir(parents=True, exist_ok=True)
-        paths = self._save_upload_items(items, target_dir, "voice-sample")
-
-        raw_name = str(form.getfirst("voice_name", "")).strip()
-        voice_name = raw_name or Path(safe_filename(items[0].filename)).stem or "声音素材"
-        voice_source_type = str(form.getfirst("voice_source_type", "clean_voice"))
-        if voice_source_type not in {"clean_voice", "mixed_voice"}:
-            voice_source_type = "clean_voice"
-        voice_profile_id = str(form.getfirst("voice_profile_id", "")).strip()
-        return paths, voice_name, voice_source_type, voice_profile_id
+    def read_voice_sample_upload(self) -> tuple[list[Path], str, str, str]:
+        return parse_voice_sample_upload(self.rfile, self.headers, UPLOAD_ROOT)
 
     def send_html(self, body: str) -> None:
         data = body.encode("utf-8")
@@ -576,6 +398,30 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def send_static_file(self, relative_path: str, head_only: bool = False) -> None:
+        if not relative_path or "\x00" in relative_path:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        static_root = STATIC_ROOT.resolve()
+        path = (static_root / relative_path).resolve()
+        try:
+            path.relative_to(static_root)
+        except ValueError:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if not path.is_file():
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        data = path.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
 
     def send_file(self, path: Path, head_only: bool = False, download_name: str | None = None) -> None:
         if not path.exists():
@@ -630,65 +476,3 @@ def run_web_app(host: str, port: int, seed_vc_dir: Path) -> None:
     server = ThreadingHTTPServer((host, port), AppHandler)
     print(f"Timbre Shift web app: http://{host}:{port}")
     server.serve_forever()
-
-
-def write_error_metrics(path: Path, error: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "voice_profile_id": None,
-                "voice_profile_name": None,
-                "song_id": None,
-                "song_title": None,
-                "render_mode": None,
-                "source_mode": None,
-                "library_voice_hit": False,
-                "library_song_stems_hit": False,
-                "demucs_cache_hit": False,
-                "seedvc_cache_hit": False,
-                "song_duration_seconds": None,
-                "active_vocal_seconds": None,
-                "active_ratio": None,
-                "prepare_voice_seconds": 0.0,
-                "prepare_song_seconds": 0.0,
-                "demucs_seconds": 0.0,
-                "vocal_segment_detect_seconds": 0.0,
-                "seedvc_seconds": 0.0,
-                "restore_timeline_seconds": 0.0,
-                "mix_seconds": 0.0,
-                "mp3_export_seconds": 0.0,
-                "total_seconds": 0.0,
-                "seedvc_rtf": None,
-                "mps_requested": False,
-                "mps_used": False,
-                "seedvc_device": None,
-                "seedvc_cpu_fallback_used": False,
-                "output_wav": None,
-                "output_mp3": None,
-                "error_message": error,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-
-def create_test_result(path: Path) -> Path:
-    """Create a short WAV so the upload/download flow is immediately testable."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    sample_rate = 44100
-    duration_seconds = 3
-    frequency = 440.0
-    amplitude = 12000
-    total_frames = sample_rate * duration_seconds
-
-    with wave.open(str(path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        for index in range(total_frames):
-            sample = int(amplitude * math.sin(2 * math.pi * frequency * index / sample_rate))
-            wav.writeframesraw(sample.to_bytes(2, byteorder="little", signed=True))
-    return path

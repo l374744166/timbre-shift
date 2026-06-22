@@ -93,6 +93,15 @@ class PipelineOptions:
     seedvc_chunk_workers: int = 0
     engine_id: str = "seedvc"
     voice_model_id: Optional[str] = None
+    rvc_preset: str = "stable_balanced"
+    diction_mode: str = ""
+    vocal_style: str = ""
+    enable_safe_limiter: bool = True
+    allow_experimental_index: bool = False
+    rvc_index_rate: Optional[float] = None
+    generate_variants: bool = False
+    pre_rvc_cleanup_mode: str = "off"
+    mix_style: str = "natural"
 
 
 def resolve_preset(options: PipelineOptions) -> RenderPreset:

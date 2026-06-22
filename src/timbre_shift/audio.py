@@ -169,6 +169,35 @@ def mix_audio(
     return output
 
 
+def limit_audio_peak(source: Path, output: Path, peak_limit: float = 0.92) -> Path:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    filters = ",".join(
+        [
+            f"alimiter=limit={peak_limit}",
+            f"loudnorm=I=-16:TP=-1.0:LRA=11",
+            f"alimiter=limit={peak_limit}",
+        ]
+    )
+    run_command(
+        as_strs(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                source,
+                "-af",
+                filters,
+                "-ac",
+                "1",
+                "-ar",
+                "44100",
+                output,
+            ]
+        )
+    )
+    return output
+
+
 def polish_vocal(
     source: Path,
     output: Path,

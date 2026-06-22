@@ -50,7 +50,7 @@ class PipelineTests(unittest.TestCase):
             with patch("timbre_shift.pipeline.normalize_audio", side_effect=fake_normalize), \
                 patch("timbre_shift.pipeline.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.separate_vocals") as separate_vocals, \
-                patch("timbre_shift.pipeline.convert_singing_voice_result", return_value=seedvc_result(converted)), \
+                patch("timbre_shift.pipeline_seedvc.convert_singing_voice_result", return_value=seedvc_result(converted)), \
                 patch("timbre_shift.pipeline.polish_vocal", side_effect=lambda source, output: source), \
                 patch("timbre_shift.pipeline.export_mp3", return_value=root / "out" / "final.mp3"):
                 final = run_demo(
@@ -109,9 +109,9 @@ class PipelineTests(unittest.TestCase):
                 patch("timbre_shift.pipeline.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.separate_vocals", return_value=separation), \
                 patch("timbre_shift.pipeline.compact_for_conversion", return_value=compact) as compact_for_conversion, \
-                patch("timbre_shift.pipeline.convert_singing_voice_result", return_value=seedvc_result(converted)) as convert_singing_voice, \
+                patch("timbre_shift.pipeline_seedvc.convert_singing_voice_result", return_value=seedvc_result(converted)) as convert_singing_voice, \
                 patch("timbre_shift.pipeline.restore_compact_vocals", return_value=restored) as restore_compact_vocals, \
-                patch("timbre_shift.pipeline.polish_vocal", return_value=root / "polished.wav") as polish_vocal, \
+                patch("timbre_shift.pipeline.polish_vocal", side_effect=fake_normalize) as polish_vocal, \
                 patch("timbre_shift.pipeline.mix_audio", return_value=final) as mix_audio, \
                 patch("timbre_shift.pipeline.export_mp3", return_value=root / "out" / "final.mp3"):
                 result = run_demo(
@@ -129,5 +129,8 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(convert_singing_voice.call_args.kwargs["source_vocal"], compact_audio)
             restore_compact_vocals.assert_called_once()
             polish_vocal.assert_called_once()
-            self.assertEqual(mix_audio.call_args.kwargs["converted_vocal"], root / "polished.wav")
+            self.assertEqual(
+                mix_audio.call_args.kwargs["converted_vocal"],
+                root / "work" / "converted" / "m2_full_fast" / "converted_optimized.wav",
+            )
             self.assertEqual(result, final)

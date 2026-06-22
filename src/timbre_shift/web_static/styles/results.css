@@ -1,0 +1,40 @@
+.result-page {display:grid;
+  gap:14px;
+  margin-top:16px}
+.result-hero,.player-card,.variant-card {border:1px solid var(--line);
+  border-radius:12px;
+  padding:14px;
+  background:var(--card)}
+.result-grid {display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px}
+.player-card audio,.variant-card audio {width:100%;
+  margin:10px 0}
+.score-grid {display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:10px}
+.score-item {border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px;
+  background:var(--panel);
+  display:grid;
+  gap:4px}
+.score-item span {color:var(--muted)}
+.variant-grid {display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:12px}
+.history-list {display:grid;
+  gap:8px}
+.history-row {display:grid;
+  grid-template-columns:1.4fr 1fr .8fr .6fr auto;
+  gap:10px;
+  align-items:center;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px;
+  background:var(--card)}
+.metrics {font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--muted);
+  font-size:12px}
+@media(max-width:900px) {.result-grid,.history-row {grid-template-columns:1fr}
+}

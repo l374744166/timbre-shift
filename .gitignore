@@ -34,3 +34,7 @@ vendor/applio/
 .DS_Store
 .idea/
 .vscode/
+
+# Local runtime environments and temporary history
+.miniforge/
+history/
