@@ -34,6 +34,7 @@ def add_voice_samples_from_uploads(
     if not voice_profile_id:
         raise ValueError("先选择一个已保存音色")
 
+    PROGRESS.reset("准备添加声音素材", 5, "running")
     prepared = prepare_voice_uploads(
         voice_uploads,
         voice_source_type,
@@ -78,6 +79,7 @@ def save_voice_profile_from_uploads(
     voice_source_type: str,
     root: Path,
 ) -> dict[str, object]:
+    PROGRESS.reset("准备保存音色", 5, "running")
     prepared = prepare_voice_uploads(
         voice_uploads,
         voice_source_type,

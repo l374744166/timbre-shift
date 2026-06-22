@@ -32,6 +32,10 @@ class ProgressState:
             self.step = step
             self.percent = percent
             self.status = status
+            if status in {"running", "completed"}:
+                self.error = ""
+            if status == "completed":
+                self.cancel_requested = False
             self.updated_at = time.time()
 
     def fail(self, error: str) -> None:
