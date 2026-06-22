@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .tts import default_piper_model_from_env, synthesize_text_to_wav
+from .tts import DEFAULT_EDGE_VOICE, default_piper_model_from_env, synthesize_text_to_wav
 from .web_generation import generate_song_payload
 from .web_state import PROGRESS
 
@@ -28,6 +28,10 @@ def generate_tts_payload(
 
     provider = str(fields.get("tts_provider", "auto") or "auto")
     voice = str(fields.get("tts_voice", "Tingting") or "Tingting")
+    edge_voice = str(fields.get("edge_voice", DEFAULT_EDGE_VOICE) or DEFAULT_EDGE_VOICE)
+    edge_rate = _int_field(fields, "edge_rate", -8, -50, 50)
+    edge_pitch = _int_field(fields, "edge_pitch", 0, -50, 50)
+    edge_volume = _int_field(fields, "edge_volume", 0, -50, 50)
     rate = int(str(fields.get("tts_rate", "0") or "0"))
     length_scale = _float_field(fields, "tts_length_scale", 1.15, 0.6, 2.0)
     noise_scale = _float_field(fields, "tts_noise_scale", 0.667, 0.1, 1.5)
@@ -44,6 +48,10 @@ def generate_tts_payload(
         voice=voice,
         rate=rate,
         provider=provider,
+        edge_voice=edge_voice,
+        edge_rate=edge_rate,
+        edge_pitch=edge_pitch,
+        edge_volume=edge_volume,
         piper_model=default_piper_model_from_env(),
         length_scale=length_scale,
         noise_scale=noise_scale,
@@ -86,6 +94,10 @@ def generate_tts_payload(
         metrics["tts_text"] = text
         metrics["tts_provider"] = tts_meta["provider"]
         metrics["tts_voice"] = tts_meta["voice"]
+        metrics["edge_voice"] = edge_voice
+        metrics["edge_rate"] = edge_rate
+        metrics["edge_pitch"] = edge_pitch
+        metrics["edge_volume"] = edge_volume
         metrics["tts_length_scale"] = length_scale
         metrics["tts_noise_scale"] = noise_scale
         metrics["tts_noise_w_scale"] = noise_w_scale
@@ -100,6 +112,14 @@ def generate_tts_payload(
 def _float_field(fields: dict[str, Any], key: str, default: float, minimum: float, maximum: float) -> float:
     try:
         value = float(str(fields.get(key, default) or default))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _int_field(fields: dict[str, Any], key: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(float(str(fields.get(key, default) or default)))
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))

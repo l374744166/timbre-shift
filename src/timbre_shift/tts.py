@@ -11,6 +11,7 @@ from .commands import require_binary, run_command
 
 
 DEFAULT_SYSTEM_VOICE = "Tingting"
+DEFAULT_EDGE_VOICE = "zh-CN-XiaoxiaoNeural"
 DEFAULT_PIPER_MODEL = Path("models/piper/zh_CN-huayan-medium.onnx")
 
 
@@ -21,6 +22,10 @@ def synthesize_text_to_wav(
     voice: str = DEFAULT_SYSTEM_VOICE,
     rate: int = 0,
     provider: str = "auto",
+    edge_voice: str = DEFAULT_EDGE_VOICE,
+    edge_rate: int = -8,
+    edge_pitch: int = 0,
+    edge_volume: int = 0,
     piper_model: Path | None = None,
     length_scale: float = 1.15,
     noise_scale: float = 0.667,
@@ -30,8 +35,8 @@ def synthesize_text_to_wav(
 ) -> dict[str, object]:
     """Synthesize text into a mono 44.1 kHz WAV.
 
-    Piper is preferred when a model path is provided; otherwise macOS `say`
-    is used as a fast local fallback so demos work out of the box.
+    Edge Chinese neural TTS is preferred for natural Mandarin when available.
+    Piper and macOS `say` stay as local fallback options so demos still work.
     """
 
     cleaned = " ".join(text.strip().split())
@@ -44,7 +49,23 @@ def synthesize_text_to_wav(
     piper_model = piper_model or default_piper_model_from_env()
     selected_provider = provider
     if provider == "auto":
-        selected_provider = "piper" if piper_model and piper_model.exists() and _piper_binary() else "system"
+        selected_provider = "edge" if _edge_tts_binary() else ("piper" if piper_model and piper_model.exists() and _piper_binary() else "system")
+
+    if selected_provider == "edge":
+        try:
+            _synthesize_with_edge_tts(cleaned, output, voice=edge_voice, rate=edge_rate, pitch=edge_pitch, volume=edge_volume)
+            return {
+                "provider": "edge",
+                "voice": edge_voice,
+                "text_length": len(cleaned),
+                "rate": edge_rate,
+                "pitch": edge_pitch,
+                "volume": edge_volume,
+            }
+        except Exception:
+            if provider == "edge":
+                raise
+            selected_provider = "piper" if piper_model and piper_model.exists() and _piper_binary() else "system"
 
     if selected_provider == "piper":
         if not piper_model or not piper_model.exists():
@@ -72,6 +93,37 @@ def synthesize_text_to_wav(
 
     _synthesize_with_macos_say(cleaned, output, voice=voice, rate=rate)
     return {"provider": "system", "voice": voice, "text_length": len(cleaned), "rate": rate}
+
+
+def _synthesize_with_edge_tts(text: str, output: Path, *, voice: str, rate: int, pitch: int, volume: int) -> None:
+    edge_tts = _edge_tts_binary()
+    ffmpeg = require_binary("ffmpeg")
+    if not edge_tts:
+        raise FileNotFoundError("未安装 Edge TTS")
+    if not ffmpeg:
+        raise FileNotFoundError("缺少 ffmpeg，无法转换 Edge TTS 音频")
+    with tempfile.TemporaryDirectory(prefix="timbre-shift-edge-tts-") as temp_dir:
+        mp3 = Path(temp_dir) / "tts.mp3"
+        process = subprocess.run(
+            [
+                edge_tts,
+                "--text",
+                text,
+                "--voice",
+                voice,
+                f"--rate={_percent(rate)}",
+                f"--pitch={int(pitch):+d}Hz",
+                f"--volume={_percent(volume)}",
+                "--write-media",
+                str(mp3),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if process.returncode != 0:
+            raise RuntimeError((process.stderr or process.stdout or "Edge TTS 生成失败").strip())
+        run_command([ffmpeg, "-y", "-i", str(mp3), "-ac", "1", "-ar", "44100", "-vn", str(output)])
 
 
 def _synthesize_with_piper(
@@ -156,3 +208,11 @@ def default_piper_model_from_env() -> Path | None:
 
 def _piper_binary() -> str | None:
     return require_binary("piper") or (str(Path.cwd() / ".venv" / "bin" / "piper") if (Path.cwd() / ".venv" / "bin" / "piper").exists() else None)
+
+
+def _edge_tts_binary() -> str | None:
+    return require_binary("edge-tts") or (str(Path.cwd() / ".venv" / "bin" / "edge-tts") if (Path.cwd() / ".venv" / "bin" / "edge-tts").exists() else None)
+
+
+def _percent(value: int) -> str:
+    return f"{int(value):+d}%"

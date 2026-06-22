@@ -13,6 +13,7 @@ local-audio = [
 ]
 tts = [
   "piper-tts",
+  "edge-tts",
 ]
 
 [project.scripts]

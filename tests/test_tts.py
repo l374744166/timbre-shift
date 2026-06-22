@@ -77,3 +77,48 @@ def test_piper_tts_passes_adjustment_controls(monkeypatch, tmp_path):
     assert command[command.index("--noise-w-scale") + 1] == "0.5"
     assert command[command.index("--sentence-silence") + 1] == "0.5"
     assert command[command.index("--volume") + 1] == "1.2"
+
+
+def test_edge_tts_passes_chinese_voice_controls(monkeypatch, tmp_path):
+    commands = []
+
+    def fake_require_binary(name):
+        return f"/usr/bin/{name}"
+
+    def fake_run_command(command):
+        commands.append(command)
+        if "ffmpeg" in Path(command[0]).name:
+            Path(command[-1]).write_bytes(b"wav")
+
+    def fake_subprocess_run(command, **kwargs):
+        commands.append(command)
+        Path(command[command.index("--write-media") + 1]).write_bytes(b"mp3")
+
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(tts, "require_binary", fake_require_binary)
+    monkeypatch.setattr(tts, "run_command", fake_run_command)
+    monkeypatch.setattr(tts.subprocess, "run", fake_subprocess_run)
+
+    result = tts.synthesize_text_to_wav(
+        "你好，测试中文底声。",
+        tmp_path / "out.wav",
+        provider="edge",
+        edge_voice="zh-CN-YunxiNeural",
+        edge_rate=-8,
+        edge_pitch=4,
+        edge_volume=10,
+    )
+
+    edge_command = commands[0]
+    assert result["provider"] == "edge"
+    assert edge_command[edge_command.index("--voice") + 1] == "zh-CN-YunxiNeural"
+    assert "--rate=-8%" in edge_command
+    assert "--pitch=+4Hz" in edge_command
+    assert "--volume=+10%" in edge_command
+    assert any("ffmpeg" in Path(command[0]).name for command in commands)
