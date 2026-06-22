@@ -344,6 +344,11 @@ export function renderResult(data) {
   result.classList.remove('hidden');
   qs('#resultSummary').textContent = `${data.message || '生成完成'} · ${formatNumber(data.metrics?.total_seconds, 1)} 秒`;
   qs('#resultFacts').innerHTML = resultFacts(data);
+  const isTtsResult = data.metrics?.source_mode === 'tts_clean_vocal' || Boolean(data.tts);
+  result.classList.toggle('tts-result', isTtsResult);
+  qs('#resultGrid')?.classList.toggle('single-result-grid', isTtsResult);
+  if (qs('#mainPlayerTitle')) qs('#mainPlayerTitle').textContent = isTtsResult ? '朗读结果' : '成品歌曲';
+  qs('#dryVocalCard')?.classList.toggle('hidden', isTtsResult);
   const mp3 = data.download_mp3_url || data.download_url;
   const wav = data.download_wav_url || data.download_url;
   qs('#player').src = mp3 ? `${mp3}?t=${Date.now()}` : '';

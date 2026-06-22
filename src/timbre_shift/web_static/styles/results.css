@@ -63,3 +63,6 @@
   font-size:12px}
 @media(max-width:900px) {.result-grid,.history-row {grid-template-columns:1fr}
 }
+.result-grid.single-result-grid {grid-template-columns:1fr}
+.tts-result #mainPlayerCard {max-width:760px}
+.tts-result #savePreferenceButton {display:none}
