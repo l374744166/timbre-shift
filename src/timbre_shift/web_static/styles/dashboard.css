@@ -46,3 +46,5 @@
 @media(max-width:900px) {.choice-grid,.settings-grid,.upload-strip {grid-template-columns:1fr}
 .step-list {grid-template-columns:1fr 1fr}
 }
+
+.voice-upload-strip {grid-template-columns:1fr 180px 190px auto auto}
