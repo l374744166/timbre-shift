@@ -8,7 +8,7 @@
   align-items:center;
   padding:18px 24px;
   border-bottom:1px solid var(--line);
-  background:#101319}
+  background:#FFFFFF}
 .topbar h1 {margin:0;
   font-size:24px}
 .topbar p {margin:4px 0 0;
@@ -18,7 +18,7 @@
   flex-wrap:wrap}
 .sidebar {padding:18px 14px;
   border-right:1px solid var(--line);
-  background:#11141a;
+  background:#F8FAFD;
   display:grid;
   align-content:start;
   gap:8px}
@@ -26,14 +26,14 @@
   background:transparent;
   border-color:transparent;
   color:var(--muted)}
-.nav-item.active {background:var(--card);
-  border-color:var(--line);
+.nav-item.active {background:#EEF4FF;
+  border-color:#B9CCFF;
   color:var(--text)}
 .workspace {padding:20px;
   overflow:auto}
 .rightbar {padding:18px;
   border-left:1px solid var(--line);
-  background:#11141a;
+  background:#F8FAFD;
   display:grid;
   align-content:start;
   gap:14px}
