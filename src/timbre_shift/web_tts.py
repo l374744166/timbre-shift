@@ -31,7 +31,8 @@ def generate_tts_payload(
     edge_voice = str(fields.get("edge_voice", DEFAULT_EDGE_VOICE) or DEFAULT_EDGE_VOICE)
     speech_speed = _float_field(fields, "tts_speed", 1.0, 0.5, 2.0)
     edge_rate = _speed_to_edge_rate(speech_speed)
-    edge_pitch = _int_field(fields, "edge_pitch", 0, -50, 50)
+    tts_pitch = _int_field(fields, "tts_pitch", 50, 1, 100)
+    edge_pitch = _pitch_to_edge_pitch(tts_pitch)
     edge_volume = _int_field(fields, "edge_volume", 0, -50, 50)
     rate = _speed_to_system_rate(speech_speed)
     length_scale = _speed_to_piper_length_scale(speech_speed)
@@ -98,6 +99,7 @@ def generate_tts_payload(
         metrics["edge_voice"] = edge_voice
         metrics["tts_speed"] = speech_speed
         metrics["edge_rate"] = edge_rate
+        metrics["tts_pitch"] = tts_pitch
         metrics["edge_pitch"] = edge_pitch
         metrics["edge_volume"] = edge_volume
         metrics["tts_length_scale"] = length_scale
@@ -140,3 +142,8 @@ def _speed_to_piper_length_scale(speed: float) -> float:
 def _speed_to_system_rate(speed: float) -> int:
     # macOS say default is roughly 175 words/min.
     return round(175 * speed)
+
+
+def _pitch_to_edge_pitch(pitch: int) -> int:
+    # UI uses 1-100, with 50 as normal. Edge uses Hz offset.
+    return max(-50, min(50, round((pitch - 50) * 1.0)))

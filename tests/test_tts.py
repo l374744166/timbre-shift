@@ -132,3 +132,13 @@ def test_web_tts_speed_multiplier_mapping():
     assert web_tts._speed_to_edge_rate(0.75) == -25
     assert web_tts._speed_to_piper_length_scale(1.5) == 0.667
     assert web_tts._speed_to_system_rate(1.5) == 262
+
+
+def test_web_tts_pitch_number_mapping():
+    from timbre_shift import web_tts
+
+    assert web_tts._pitch_to_edge_pitch(50) == 0
+    assert web_tts._pitch_to_edge_pitch(30) == -20
+    assert web_tts._pitch_to_edge_pitch(70) == 20
+    assert web_tts._pitch_to_edge_pitch(1) == -49
+    assert web_tts._pitch_to_edge_pitch(100) == 50
