@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { state } from '../state.js';
+import { state, setSelectedEngine } from '../state.js';
 import { qs, qsa, escapeHtml, formatNumber } from '../utils.js';
 import { navigate } from '../router.js';
 import { VoiceCard } from '../components/VoiceCard.js';
@@ -22,6 +22,27 @@ function songCards() {
   return Array.from(select.options).filter((option) => option.value).map((option) => SongCard(option, state.selectedSongId)).join('') || '<div class="empty-state">还没有歌曲库记录，可以直接上传新歌曲。</div>';
 }
 
+
+function selectedVoiceSampleCount() {
+  const option = qs('#voiceProfile')?.querySelector(`option[value="${CSS.escape(state.selectedVoiceId)}"]`);
+  return Number(option?.dataset.sampleCount || 0);
+}
+
+function validateBeforeGenerate() {
+  const hasUploadedVoice = Boolean(qs('#voice')?.files?.length);
+  const hasUploadedSong = Boolean(qs('#song')?.files?.length);
+  if (!state.selectedVoiceId && !hasUploadedVoice) {
+    return isRvc() ? '请先选择一个 RVC 音色库，或先去音色库创建。' : '请先选择参考声音，或上传一段新的参考声音。';
+  }
+  if (!isRvc() && state.selectedVoiceId && selectedVoiceSampleCount() <= 0 && !hasUploadedVoice) {
+    return '你现在是 Seed-VC 快速试听，但选中的音色库还没有参考声音。请上传参考声音，或切到 RVC 正式生成。';
+  }
+  if (!state.selectedSongId && !hasUploadedSong) {
+    return '请先选择歌曲库里的歌曲，或上传一个新歌曲文件。';
+  }
+  return '';
+}
+
 function engineCopy() {
   if (isRvc()) {
     return {
@@ -39,6 +60,18 @@ function engineCopy() {
       outputLabel: '正式输出',
       submit: '开始 RVC 生成',
       advancedTitle: 'RVC 高级设置',
+      goalOptions: [
+        ['stable_balanced', '自然稳定'],
+        ['clear_diction', '歌词更清楚'],
+        ['stronger_timbre_safe', '更像目标音色'],
+      ],
+      styleOptions: [
+        ['neutral', '不额外修饰'],
+        ['close_intimate', '贴脸清晰'],
+        ['narrative_soft', '柔和抒情'],
+        ['low_thick', '温暖厚实'],
+        ['bright_pop', '明亮流行'],
+      ],
     };
   }
   return {
@@ -52,10 +85,22 @@ function engineCopy() {
     addButton: '补充参考素材',
     songHelp: 'Seed-VC 更适合先做短片段试听，确认方向后再走 RVC 训练。',
     goalLabel: '试听目标',
-    styleLabel: '试听人声修饰',
+    styleLabel: '试听修饰',
     outputLabel: '试听输出',
     submit: '开始 Seed-VC 试听',
     advancedTitle: 'Seed-VC 高级设置',
+    goalOptions: [
+      ['stable_balanced', '快速稳定'],
+      ['clear_diction', '歌词清楚'],
+      ['stronger_timbre_safe', '更贴近参考声音'],
+    ],
+    styleOptions: [
+      ['neutral', '不额外修饰'],
+      ['close_intimate', '人声更清晰'],
+      ['narrative_soft', '柔和一点'],
+      ['low_thick', '温暖厚一点'],
+      ['bright_pop', '明亮一点'],
+    ],
   };
 }
 
@@ -72,8 +117,8 @@ export const DashboardView = {
       <div class="upload-strip"><input id="voice" name="voice" type="file" accept="audio/*" multiple><input id="voiceName" name="voice_name" placeholder="${copy.voiceNamePlaceholder}"><button class="secondary" id="saveVoiceButton" type="button">${copy.saveButton}</button><button class="secondary" id="addVoiceSampleButton" type="button">${copy.addButton}</button></div><div class="message" id="voiceSaveMessage"></div></section>
     <section class="step-section"><h3>Step 3：选择歌曲</h3><p class="muted">${copy.songHelp}</p><div class="resource-grid" id="songCards">${songCards()}</div><div class="upload-strip"><input id="song" name="song" type="file" accept="audio/*"><span class="muted">也可以上传干净人声，高级设置里选择源人声清理。</span></div></section>
     <section class="step-section"><h3>Step 4：生成设置</h3><div class="settings-grid">
-      <label>${copy.goalLabel}<select id="rvcPreset" name="rvc_preset"><option value="stable_balanced">自然稳定</option><option value="clear_diction">歌词更清楚</option><option value="stronger_timbre_safe">更像目标音色</option></select></label>
-      <label>${copy.styleLabel}<select id="vocalStyle" name="vocal_style"><option value="neutral">不额外修饰</option><option value="close_intimate">贴脸清晰</option><option value="narrative_soft">柔和抒情</option><option value="low_thick">温暖厚实</option><option value="bright_pop">明亮流行</option></select></label>
+      <label>${copy.goalLabel}<select id="rvcPreset" name="rvc_preset">${copy.goalOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
+      <label>${copy.styleLabel}<select id="vocalStyle" name="vocal_style">${copy.styleOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
       <label>${copy.outputLabel}<select id="outputMode"><option value="full">完整歌曲</option><option value="dry">干声</option><option value="variants">生成对比版本</option></select></label>
     </div>
     <details class="details-panel"><summary>${copy.advancedTitle}</summary><div class="settings-grid"><label>源人声清理<select id="preRvcCleanupMode" name="pre_rvc_cleanup_mode"><option value="off">关闭</option><option value="standard">标准</option><option value="strong">强力</option></select></label><label>混音风格<select id="mixStyle" name="mix_style"><option value="natural">自然</option><option value="vocal_forward">人声靠前</option><option value="blend_with_backing">融进伴奏</option></select></label>${isRvc() ? '<label>咬字增强<select id="dictionMode" name="diction_mode"><option value="off">关闭</option><option value="light" selected>轻微</option><option value="medium">中等</option><option value="strong">强</option></select></label><label>音色记忆库<select id="rvcIndexRate" name="rvc_index_rate"><option value="0">关闭</option><option value="0.25">轻度</option><option value="0.45">中度</option></select></label><label class="check"><input id="allowExperimentalIndex" name="allow_experimental_index" type="checkbox">开启实验音色记忆库</label>' : '<input type="hidden" name="diction_mode" value="off"><input type="hidden" name="rvc_index_rate" value="0">'}<label class="check"><input id="generateVariants" name="generate_variants" type="checkbox">生成对比版本</label></div></details>
@@ -81,13 +126,13 @@ export const DashboardView = {
     <div class="action-bar"><button id="submit" type="submit">${copy.submit}</button><div id="message" class="message"></div></div></section>${ResultCard()}</form>`;
   },
   mount: () => {
-    qsa('input[name="engine_id"]').forEach((input) => input.addEventListener('change', () => { state.selectedEngine = input.value; navigate('dashboard'); }));
+    qsa('input[name="engine_id"]').forEach((input) => input.addEventListener('change', () => { setSelectedEngine(input.value); navigate('dashboard'); }));
     qs('#voiceCards')?.addEventListener('click', (event) => { const button = event.target.closest('.voice-select,.voice-train'); if (!button) return; state.selectedVoiceId = button.dataset.id; qs('#voiceProfile').value = state.selectedVoiceId; qs('#voiceIdField').value = state.selectedVoiceId; if (button.classList.contains('voice-train')) navigate('training'); else navigate('dashboard'); });
     qs('#songCards')?.addEventListener('click', (event) => { const button = event.target.closest('.song-select'); if (!button) return; state.selectedSongId = button.dataset.id; qs('#songLibrary').value = state.selectedSongId; qs('#songIdField').value = state.selectedSongId; navigate('dashboard'); });
     qs('#outputMode')?.addEventListener('change', (event) => { qs('#generateVariants').checked = event.target.value === 'variants'; });
     qs('#saveVoiceButton')?.addEventListener('click', async () => { const body = new FormData(); const files = qs('#voice').files; Array.from(files).forEach((file) => body.append('voice', file)); body.append('voice_name', qs('#voiceName').value || '未命名音色'); body.append('voice_source_type', 'clean_voice'); qs('#voiceSaveMessage').textContent = isRvc() ? '正在创建 RVC 音色库...' : '正在保存参考声音...'; try { const data = await api.post(isRvc() ? '/api/create-voice-profile' : '/api/save-voice', body); qs('#voiceSaveMessage').textContent = data.message || '已保存'; } catch (error) { qs('#voiceSaveMessage').textContent = error.message; } });
     qs('#addVoiceSampleButton')?.addEventListener('click', async () => { const body = new FormData(); Array.from(qs('#voice').files).forEach((file) => body.append('voice', file)); body.append('voice_name', qs('#voiceName').value || '声音素材'); body.append('voice_profile_id', state.selectedVoiceId); body.append('voice_source_type', 'clean_voice'); qs('#voiceSaveMessage').textContent = isRvc() ? '正在添加训练素材...' : '正在补充参考素材...'; try { const data = await api.post('/api/add-voice-sample', body); qs('#voiceSaveMessage').textContent = data.message || '素材已添加'; } catch (error) { qs('#voiceSaveMessage').textContent = error.message; } });
-    qs('#form').addEventListener('submit', async (event) => { event.preventDefault(); qs('#message').textContent = isRvc() ? '正在 RVC 正式生成...' : '正在 Seed-VC 快速试听...'; const body = new FormData(qs('#form')); body.set('engine_id', state.selectedEngine); body.set('voice_profile_id', state.selectedVoiceId); body.set('song_id', state.selectedSongId); try { const data = await api.generate(body); renderResult(data); qs('#message').textContent = data.message || '生成完成'; } catch (error) { qs('#message').textContent = error.message; } });
+    qs('#form').addEventListener('submit', async (event) => { event.preventDefault(); const validation = validateBeforeGenerate(); if (validation) { qs('#message').textContent = validation; return; } qs('#message').textContent = isRvc() ? '正在 RVC 正式生成...' : '正在 Seed-VC 快速试听...'; const body = new FormData(qs('#form')); body.set('engine_id', state.selectedEngine); body.set('voice_profile_id', state.selectedVoiceId); body.set('song_id', state.selectedSongId); try { const data = await api.generate(body); renderResult(data); qs('#message').textContent = data.message || '生成完成'; } catch (error) { qs('#message').textContent = error.message; } });
   },
 };
 
