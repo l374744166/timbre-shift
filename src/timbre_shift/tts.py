@@ -11,6 +11,7 @@ from .commands import require_binary, run_command
 
 
 DEFAULT_SYSTEM_VOICE = "Tingting"
+DEFAULT_PIPER_MODEL = Path("models/piper/zh_CN-huayan-medium.onnx")
 
 
 def synthesize_text_to_wav(
@@ -35,9 +36,10 @@ def synthesize_text_to_wav(
         raise ValueError("文字太长，建议先控制在 1000 字以内")
 
     output.parent.mkdir(parents=True, exist_ok=True)
+    piper_model = piper_model or default_piper_model_from_env()
     selected_provider = provider
     if provider == "auto":
-        selected_provider = "piper" if piper_model and piper_model.exists() and require_binary("piper") else "system"
+        selected_provider = "piper" if piper_model and piper_model.exists() and _piper_binary() else "system"
 
     if selected_provider == "piper":
         if not piper_model or not piper_model.exists():
@@ -50,7 +52,7 @@ def synthesize_text_to_wav(
 
 
 def _synthesize_with_piper(text: str, output: Path, model: Path) -> None:
-    piper = require_binary("piper")
+    piper = _piper_binary()
     if not piper:
         raise FileNotFoundError("未安装 Piper TTS")
     process = subprocess.run(
@@ -97,4 +99,11 @@ def _synthesize_with_macos_say(text: str, output: Path, *, voice: str, rate: int
 
 def default_piper_model_from_env() -> Path | None:
     value = os.environ.get("TIMBRE_SHIFT_PIPER_MODEL", "").strip()
-    return Path(value).expanduser() if value else None
+    if value:
+        return Path(value).expanduser()
+    default_model = Path.cwd() / DEFAULT_PIPER_MODEL
+    return default_model if default_model.exists() else None
+
+
+def _piper_binary() -> str | None:
+    return require_binary("piper") or (str(Path.cwd() / ".venv" / "bin" / "piper") if (Path.cwd() / ".venv" / "bin" / "piper").exists() else None)

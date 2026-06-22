@@ -19,7 +19,7 @@ export const TtsView = {
       <label>RVC 模型<select id="ttsVoiceModel" name="voice_model_id"><option value="">自动选择可用模型</option></select></label>
       <label>TTS 声音<select id="ttsVoice" name="tts_voice"><option value="Tingting">中文女声 Tingting</option><option value="Eddy (中文（中国大陆）)">中文男声 Eddy</option><option value="Flo (中文（中国大陆）)">中文女声 Flo</option><option value="Meijia">中文女声 Meijia</option></select></label>
     </div></section>
-    <section class="step-section"><h3>3. 输入朗读文字</h3><textarea id="ttsText" name="tts_text" rows="7" placeholder="请输入要朗读的文字，例如：大家好，欢迎体验 Timbre Shift 本地 AI 音色转换工作台。"></textarea><p class="muted">当前先用本地系统 TTS 保底；配置 Piper 模型后会优先走 Piper。</p></section>
+    <section class="step-section"><h3>3. 输入朗读文字</h3><textarea id="ttsText" name="tts_text" rows="7" placeholder="请输入要朗读的文字，例如：大家好，欢迎体验 Timbre Shift 本地 AI 音色转换工作台。"></textarea><p class="muted">当前优先使用 Piper 中文模型；模型缺失时自动用本机系统 TTS 保底。</p></section>
     <section class="step-section"><h3>4. 朗读设置</h3><div class="settings-grid">
       <label>生成目标<select name="rvc_preset"><option value="stable_balanced">自然稳定</option><option value="clear_diction">字更清楚</option><option value="stronger_timbre_safe">更像目标音色</option></select></label>
       <label>人声修饰<select name="vocal_style"><option value="neutral">不额外修饰</option><option value="close_intimate">贴脸清晰</option><option value="narrative_soft">柔和叙述</option><option value="low_thick">温暖厚实</option><option value="bright_pop">明亮一点</option></select></label>

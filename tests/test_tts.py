@@ -24,7 +24,7 @@ def test_system_tts_uses_say_and_ffmpeg(monkeypatch, tmp_path):
     monkeypatch.setattr(tts, "require_binary", fake_require_binary)
     monkeypatch.setattr(tts, "run_command", fake_run_command)
 
-    result = tts.synthesize_text_to_wav("你好，测试。", tmp_path / "out.wav", voice="Tingting")
+    result = tts.synthesize_text_to_wav("你好，测试。", tmp_path / "out.wav", voice="Tingting", provider="system")
 
     assert result["provider"] == "system"
     assert result["voice"] == "Tingting"

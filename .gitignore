@@ -22,6 +22,8 @@ data/reference_voice/*
 data/songs/*
 models/checkpoints/*
 models/pretrained/*
+models/piper/*.onnx
+models/piper/*.onnx.json
 outputs/*
 logs/*
 vendor/seed-vc/

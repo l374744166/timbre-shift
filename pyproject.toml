@@ -11,6 +11,9 @@ local-audio = [
   "demucs",
   "torchcodec",
 ]
+tts = [
+  "piper-tts",
+]
 
 [project.scripts]
 timbre-shift = "timbre_shift.cli:main"
