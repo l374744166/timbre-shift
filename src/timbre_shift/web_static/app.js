@@ -60,7 +60,7 @@ async function boot() {
   await refreshProgress();
   setInterval(refreshProgress, 1200);
   setInterval(refreshRecentHistory, 15000);
-  qs('#cancelTaskButton').addEventListener('click', async () => {
+  qs('#cancelTaskButton')?.addEventListener('click', async () => {
     await api.cancelTask();
     await refreshProgress();
   });

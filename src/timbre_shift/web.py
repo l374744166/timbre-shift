@@ -15,6 +15,7 @@ from .history_actions import delete_history_job, restore_history_job
 from .library import (
     DEFAULT_DB_PATH,
     DEFAULT_LIBRARY_DIR,
+    archive_song,
     archive_voice_sample,
     archive_voice_model,
     archive_voice_profile,
@@ -258,6 +259,18 @@ class AppHandler(BaseHTTPRequestHandler):
                     PROGRESS.cancel()
                 else:
                     PROGRESS.fail(str(exc))
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if self.path == "/api/delete-song":
+            try:
+                fields = self.read_form_fields()
+                song_id = str(fields.get("song_id", "")).strip()
+                if not song_id:
+                    raise ValueError("请选择要删除的歌曲")
+                archive_song(song_id, db_path=DEFAULT_DB_PATH)
+                self.send_json({"id": song_id, "message": "歌曲已删除"})
+            except Exception as exc:
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 

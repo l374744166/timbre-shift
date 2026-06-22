@@ -72,7 +72,6 @@ def page_html() -> str:
         <div class="progress-card">
           <div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div>
           <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-          <button class="secondary full" id="cancelTaskButton" type="button">停止任务</button>
         </div>
       </section>
       <section class="side-panel">

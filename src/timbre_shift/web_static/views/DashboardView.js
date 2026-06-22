@@ -205,6 +205,26 @@ export const DashboardView = {
       if (option && modelCount != null) option.dataset.rvcModelCount = String(modelCount);
       qs('#voiceCards').innerHTML = voiceCards();
     };
+    const removeVoiceOption = (id) => {
+      const option = qs('#voiceProfile')?.querySelector(`option[value="${CSS.escape(id)}"]`);
+      option?.remove();
+      if (state.selectedVoiceId === id) {
+        state.selectedVoiceId = '';
+        qs('#voiceProfile').value = '';
+        qs('#voiceIdField').value = '';
+      }
+      qs('#voiceCards').innerHTML = voiceCards();
+    };
+    const removeSongOption = (id) => {
+      const option = qs('#songLibrary')?.querySelector(`option[value="${CSS.escape(id)}"]`);
+      option?.remove();
+      if (state.selectedSongId === id) {
+        state.selectedSongId = '';
+        qs('#songLibrary').value = '';
+        qs('#songIdField').value = '';
+      }
+      qs('#songCards').innerHTML = songCards();
+    };
     const setDashboardMessage = (text, isError = false) => {
       const message = qs('#dashboardTrainMessage');
       if (!message) return;
@@ -238,13 +258,30 @@ export const DashboardView = {
       if (option) selectVoice(state.selectedVoiceId);
     }
     qs('#voiceCards')?.addEventListener('click', async (event) => {
+      const deleteButton = event.target.closest('.voice-delete');
+      if (deleteButton) {
+        const name = deleteButton.dataset.name || '这个音色';
+        if (!window.confirm(`删除音色「${name}」？`)) return;
+        qs('#voiceSaveMessage').textContent = '正在删除音色...';
+        const body = new FormData();
+        body.append('voice_profile_id', deleteButton.dataset.id || '');
+        try {
+          const data = await api.post('/api/delete-voice', body);
+          removeVoiceOption(data.id || deleteButton.dataset.id || '');
+          qs('#voiceSaveMessage').textContent = data.message || '音色已删除';
+          await loadRvcTrainingDetails();
+        } catch (error) {
+          qs('#voiceSaveMessage').textContent = error.message;
+        }
+        return;
+      }
       const button = event.target.closest('.voice-select,.voice-train');
       if (!button) return;
       selectVoice(button.dataset.id);
       await loadRvcTrainingDetails();
       if (button.classList.contains('voice-train')) qs('#rvcInlinePanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    qs('#songCards')?.addEventListener('click', (event) => { const button = event.target.closest('.song-select'); if (!button) return; state.selectedSongId = button.dataset.id; qs('#songLibrary').value = state.selectedSongId; qs('#songIdField').value = state.selectedSongId; navigate('dashboard'); });
+    qs('#songCards')?.addEventListener('click', async (event) => { const deleteButton = event.target.closest('.song-delete'); if (deleteButton) { const name = deleteButton.dataset.name || '这首歌'; if (!window.confirm(`删除歌曲「${name}」？`)) return; qs('#message').textContent = '正在删除歌曲...'; const body = new FormData(); body.append('song_id', deleteButton.dataset.id || ''); try { const data = await api.post('/api/delete-song', body); removeSongOption(data.id || deleteButton.dataset.id || ''); qs('#message').textContent = data.message || '歌曲已删除'; } catch (error) { qs('#message').textContent = error.message; } return; } const button = event.target.closest('.song-select'); if (!button) return; state.selectedSongId = button.dataset.id; qs('#songLibrary').value = state.selectedSongId; qs('#songIdField').value = state.selectedSongId; navigate('dashboard'); });
     qs('#outputMode')?.addEventListener('change', (event) => { qs('#generateVariants').value = event.target.value === 'variants' ? 'on' : ''; });
     qs('#saveVoiceButton')?.addEventListener('click', async () => { const body = new FormData(); const files = qs('#voice').files; Array.from(files).forEach((file) => body.append('voice', file)); body.append('voice_name', qs('#voiceName').value || '未命名音色'); const sourceType = qs('#voiceSourceType')?.value || 'clean_voice'; body.append('voice_source_type', sourceType); qs('#voiceSaveMessage').textContent = sourceType === 'mixed_voice' ? '正在分离人声并保存...' : (isRvc() ? '正在创建 RVC 音色库...' : '正在保存参考声音...'); try { const data = await api.post(isRvc() ? '/api/create-voice-profile' : '/api/save-voice', body); upsertVoiceOption(data); selectVoice(data.id); qs('#voiceSaveMessage').textContent = data.message || '已保存'; await loadRvcTrainingDetails(); } catch (error) { qs('#voiceSaveMessage').textContent = error.message; } });
     qs('#addVoiceSampleButton')?.addEventListener('click', async () => { const body = new FormData(); Array.from(qs('#voice').files).forEach((file) => body.append('voice', file)); body.append('voice_name', qs('#voiceName').value || '声音素材'); body.append('voice_profile_id', state.selectedVoiceId); const sourceType = qs('#voiceSourceType')?.value || 'clean_voice'; body.append('voice_source_type', sourceType); qs('#voiceSaveMessage').textContent = sourceType === 'mixed_voice' ? '正在分离人声并添加素材...' : (isRvc() ? '正在添加训练素材...' : '正在补充参考素材...'); try { const data = await api.post('/api/add-voice-sample', body); updateSelectedVoiceStats({ sampleCount: data.sample_count }); qs('#voiceSaveMessage').textContent = data.message || '素材已添加'; await loadRvcTrainingDetails(); } catch (error) { qs('#voiceSaveMessage').textContent = error.message; } });

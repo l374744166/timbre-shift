@@ -1,4 +1,5 @@
 import { qs } from '../utils.js';
+import { api } from '../api.js';
 import { state, setSelectedEngine } from '../state.js';
 import { navigate } from '../router.js';
 import { VoiceCard } from '../components/VoiceCard.js';
@@ -10,7 +11,19 @@ export const VoiceLibraryView = {
   },
   mount: () => {
     qs('#newVoiceFromLibrary')?.addEventListener('click', () => { setSelectedEngine('rvc_applio'); navigate('dashboard'); });
-    qs('#libraryVoiceCards')?.addEventListener('click', (event) => {
+    qs('#libraryVoiceCards')?.addEventListener('click', async (event) => {
+      const deleteButton = event.target.closest('.voice-delete');
+      if (deleteButton) {
+        const name = deleteButton.dataset.name || '这个音色';
+        if (!window.confirm(`删除音色「${name}」？`)) return;
+        const body = new FormData();
+        body.append('voice_profile_id', deleteButton.dataset.id || '');
+        await api.post('/api/delete-voice', body);
+        qs('#voiceProfile')?.querySelector(`option[value="${CSS.escape(deleteButton.dataset.id || '')}"]`)?.remove();
+        if (state.selectedVoiceId === deleteButton.dataset.id) state.selectedVoiceId = '';
+        navigate('voices');
+        return;
+      }
       const button = event.target.closest('.voice-select,.voice-train');
       if (!button) return;
       state.selectedVoiceId = button.dataset.id;

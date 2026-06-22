@@ -1,4 +1,5 @@
 import { qs } from '../utils.js';
+import { api } from '../api.js';
 import { state } from '../state.js';
 import { navigate } from '../router.js';
 import { SongCard } from '../components/SongCard.js';
@@ -10,7 +11,19 @@ export const SongLibraryView = {
   },
   mount: () => {
     qs('#uploadSongFromLibrary')?.addEventListener('click', () => navigate('dashboard'));
-    qs('#librarySongCards')?.addEventListener('click', (event) => {
+    qs('#librarySongCards')?.addEventListener('click', async (event) => {
+      const deleteButton = event.target.closest('.song-delete');
+      if (deleteButton) {
+        const name = deleteButton.dataset.name || '这首歌';
+        if (!window.confirm(`删除歌曲「${name}」？`)) return;
+        const body = new FormData();
+        body.append('song_id', deleteButton.dataset.id || '');
+        await api.post('/api/delete-song', body);
+        qs('#songLibrary')?.querySelector(`option[value="${CSS.escape(deleteButton.dataset.id || '')}"]`)?.remove();
+        if (state.selectedSongId === deleteButton.dataset.id) state.selectedSongId = '';
+        navigate('songs');
+        return;
+      }
       const button = event.target.closest('.song-select');
       if (!button) return;
       state.selectedSongId = button.dataset.id;

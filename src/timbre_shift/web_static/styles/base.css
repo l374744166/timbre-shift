@@ -31,6 +31,9 @@ button,.download {border:1px solid var(--primary);
 button.secondary,.download.secondary {background:transparent;
   color:var(--text);
   border-color:var(--line)}
+button.danger {color:var(--error);
+  border-color:rgba(214,69,69,.45)}
+button.danger:hover {background:rgba(214,69,69,.08)}
 input,select {width:100%;
   min-height:38px;
   border:1px solid var(--line);
