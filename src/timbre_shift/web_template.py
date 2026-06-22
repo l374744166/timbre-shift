@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 
-from .library import DEFAULT_DB_PATH, init_library, list_songs, list_voice_profiles, list_voice_samples
+from .library import DEFAULT_DB_PATH, init_library, list_songs, list_voice_models, list_voice_profiles, list_voice_samples
 
 
 def page_html() -> str:
@@ -12,10 +12,13 @@ def page_html() -> str:
     voice_option_parts = []
     for profile in list_voice_profiles(only_allowed_targets=True, db_path=DEFAULT_DB_PATH):
         sample_count = len(list_voice_samples(profile.id, db_path=DEFAULT_DB_PATH))
+        rvc_models = list_voice_models(profile.id, engine_id="rvc_applio", db_path=DEFAULT_DB_PATH)
+        ready_model_count = sum(1 for model in rvc_models if model.status == "ready")
         voice_option_parts.append(
             f'<option value="{html.escape(profile.id)}" '
             f'data-source-type="{html.escape(profile.source_type)}" '
-            f'data-sample-count="{sample_count}">{html.escape(profile.name)}</option>'
+            f'data-sample-count="{sample_count}" '
+            f'data-rvc-model-count="{ready_model_count}">{html.escape(profile.name)}</option>'
         )
     voice_options = "\n".join(voice_option_parts)
     song_options = "\n".join(
