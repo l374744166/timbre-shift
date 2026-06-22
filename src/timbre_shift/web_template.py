@@ -54,6 +54,7 @@ def page_html() -> str:
 
     <aside class="sidebar" aria-label="主导航">
       <button class="nav-item active" data-view="dashboard" type="button">工作台</button>
+      <button class="nav-item" data-view="tts" type="button">文字朗读</button>
       <button class="nav-item" data-view="voices" type="button">音色库</button>
       <button class="nav-item" data-view="songs" type="button">歌曲库</button>
       <button class="nav-item" data-view="training" type="button">RVC 训练</button>

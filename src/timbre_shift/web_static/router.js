@@ -4,11 +4,13 @@ import { DashboardView } from './views/DashboardView.js';
 import { VoiceLibraryView } from './views/VoiceLibraryView.js';
 import { SongLibraryView } from './views/SongLibraryView.js';
 import { TrainingView } from './views/TrainingView.js';
+import { TtsView } from './views/TtsView.js';
 import { HistoryView } from './views/HistoryView.js';
 import { EnvironmentView } from './views/EnvironmentView.js';
 
 const views = {
   dashboard: DashboardView,
+  tts: TtsView,
   voices: VoiceLibraryView,
   songs: SongLibraryView,
   training: TrainingView,

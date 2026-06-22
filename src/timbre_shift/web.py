@@ -35,6 +35,7 @@ from .web_serializers import serialize_voice_sample
 from .web_state import PROGRESS
 from .web_template import page_html
 from .web_training import prepare_applio_payload, train_applio_payload
+from .web_tts import generate_tts_payload
 from .web_uploads import (
     read_form_fields as parse_form_fields,
     read_uploads as parse_uploads,
@@ -184,6 +185,24 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 self.send_json({"message": "已保存为该音色默认参数", "preference": preference})
             except Exception as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/tts-generate":
+            try:
+                fields = self.read_form_fields()
+                self.send_json(
+                    generate_tts_payload(
+                        seed_vc_dir=self.seed_vc_dir,
+                        fields=fields,
+                        root=ROOT,
+                        output_dir=OUTPUT_DIR,
+                    )
+                )
+            except Exception as exc:
+                if PROGRESS.is_cancelled():
+                    PROGRESS.cancel()
+                else:
+                    PROGRESS.fail(str(exc))
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/history-restore":
