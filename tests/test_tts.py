@@ -122,3 +122,13 @@ def test_edge_tts_passes_chinese_voice_controls(monkeypatch, tmp_path):
     assert "--pitch=+4Hz" in edge_command
     assert "--volume=+10%" in edge_command
     assert any("ffmpeg" in Path(command[0]).name for command in commands)
+
+
+def test_web_tts_speed_multiplier_mapping():
+    from timbre_shift import web_tts
+
+    assert web_tts._speed_to_edge_rate(1.0) == 0
+    assert web_tts._speed_to_edge_rate(1.5) == 50
+    assert web_tts._speed_to_edge_rate(0.75) == -25
+    assert web_tts._speed_to_piper_length_scale(1.5) == 0.667
+    assert web_tts._speed_to_system_rate(1.5) == 262

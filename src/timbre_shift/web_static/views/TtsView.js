@@ -29,16 +29,14 @@ export const TtsView = {
     <section class="step-section"><h3>4. 朗读设置</h3><div class="settings-grid">
       <label>生成目标<select name="rvc_preset"><option value="stable_balanced">自然稳定</option><option value="clear_diction">字更清楚</option><option value="stronger_timbre_safe">更像目标音色</option></select></label>
       <label id="ttsVocalStyleLabel" class="hidden">RVC 人声修饰<select id="ttsVocalStyle" name="vocal_style" disabled><option value="neutral">不额外修饰</option><option value="close_intimate">贴脸清晰</option><option value="narrative_soft">柔和叙述</option><option value="low_thick">温暖厚实</option><option value="bright_pop">明亮一点</option></select></label>
-      <label class="edge-control">中文语速<select name="edge_rate"><option value="-18">慢一点</option><option value="-8" selected>自然偏慢</option><option value="0">正常</option><option value="8">快一点</option></select></label>
-      <label class="edge-control">中文音高<select name="edge_pitch"><option value="-8">低一点</option><option value="0" selected>正常</option><option value="8">高一点</option></select></label>
+      <label>语速倍数<select name="tts_speed"><option value="0.75">0.75x 慢速</option><option value="0.9">0.9x 偏慢</option><option value="1.0" selected>1.0x 正常</option><option value="1.25">1.25x 稍快</option><option value="1.5">1.5x 快速</option><option value="2.0">2.0x 很快</option></select></label>
+      <label class="edge-control">语调高低<select name="edge_pitch"><option value="-8">低一点</option><option value="0" selected>正常</option><option value="8">高一点</option></select></label>
       <label class="edge-control">中文音量<select name="edge_volume"><option value="-10">低一点</option><option value="0" selected>正常</option><option value="10">大一点</option></select></label>
-      <label class="piper-control hidden">Piper 语速<select name="tts_length_scale"><option value="0.95">快一点</option><option value="1.15" selected>正常</option><option value="1.35">慢一点</option><option value="1.55">很慢</option></select></label>
       <label class="piper-control hidden">Piper 自然度<select name="tts_noise_scale"><option value="0.45">更稳定</option><option value="0.667" selected>自然</option><option value="0.9">更有变化</option></select></label>
       <label class="piper-control hidden">Piper 节奏变化<select name="tts_noise_w_scale"><option value="0.5">更稳定</option><option value="0.8" selected>自然</option><option value="1.05">更有起伏</option></select></label>
       <label class="piper-control hidden">Piper 句子停顿<select name="tts_sentence_silence"><option value="0.1">短</option><option value="0.25" selected>正常</option><option value="0.5">长</option><option value="0.8">很长</option></select></label>
       <label class="piper-control hidden">Piper 音量<select name="tts_volume"><option value="0.8">低一点</option><option value="1.0" selected>正常</option><option value="1.2">大一点</option><option value="1.4">更大</option></select></label>
-      <label id="systemRateLabel" class="hidden">系统 TTS 速度（保底用）<select name="tts_rate"><option value="0">正常</option><option value="-20">慢一点</option><option value="20">快一点</option></select></label>
-    </div><p class="muted">推荐用 Edge 在线中文，中文停顿和普通话自然度更好；Piper 是本地离线保底。</p><input type="hidden" name="mode" value="m2max_hq_30"><input type="hidden" name="diction_mode" value="off"></section>
+    </div><p class="muted">推荐用 Edge 在线中文；语速倍数只控制快慢，语调高低单独控制音高。</p><input type="hidden" name="mode" value="m2max_hq_30"><input type="hidden" name="diction_mode" value="off"></section>
     <section class="task-panel"><div class="section-head-row"><div><h3>当前任务</h3><p class="muted">TTS 生成和换音进度</p></div><span id="progressStatus" class="status-badge">待命</span></div><div class="progress-card"><div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div></div></section>
     <div class="action-bar"><button id="ttsSubmit" type="submit">生成朗读</button><div id="message" class="message"></div></div>
     ${ResultCard()}
@@ -69,7 +67,6 @@ export const TtsView = {
       qsaSafe('.edge-control').forEach((el) => el.classList.toggle('hidden', !showEdge));
       qs('#edgeVoiceLabel')?.classList.toggle('hidden', !showEdge);
       qs('#systemVoiceLabel')?.classList.toggle('hidden', !showSystem);
-      qs('#systemRateLabel')?.classList.toggle('hidden', !showSystem);
     };
     const loadModels = async () => {
       const engine = form.elements.engine_id.value;

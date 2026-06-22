@@ -29,11 +29,12 @@ def generate_tts_payload(
     provider = str(fields.get("tts_provider", "auto") or "auto")
     voice = str(fields.get("tts_voice", "Tingting") or "Tingting")
     edge_voice = str(fields.get("edge_voice", DEFAULT_EDGE_VOICE) or DEFAULT_EDGE_VOICE)
-    edge_rate = _int_field(fields, "edge_rate", -8, -50, 50)
+    speech_speed = _float_field(fields, "tts_speed", 1.0, 0.5, 2.0)
+    edge_rate = _speed_to_edge_rate(speech_speed)
     edge_pitch = _int_field(fields, "edge_pitch", 0, -50, 50)
     edge_volume = _int_field(fields, "edge_volume", 0, -50, 50)
-    rate = int(str(fields.get("tts_rate", "0") or "0"))
-    length_scale = _float_field(fields, "tts_length_scale", 1.15, 0.6, 2.0)
+    rate = _speed_to_system_rate(speech_speed)
+    length_scale = _speed_to_piper_length_scale(speech_speed)
     noise_scale = _float_field(fields, "tts_noise_scale", 0.667, 0.1, 1.5)
     noise_w_scale = _float_field(fields, "tts_noise_w_scale", 0.8, 0.1, 1.5)
     sentence_silence = _float_field(fields, "tts_sentence_silence", 0.25, 0.0, 2.0)
@@ -95,6 +96,7 @@ def generate_tts_payload(
         metrics["tts_provider"] = tts_meta["provider"]
         metrics["tts_voice"] = tts_meta["voice"]
         metrics["edge_voice"] = edge_voice
+        metrics["tts_speed"] = speech_speed
         metrics["edge_rate"] = edge_rate
         metrics["edge_pitch"] = edge_pitch
         metrics["edge_volume"] = edge_volume
@@ -123,3 +125,18 @@ def _int_field(fields: dict[str, Any], key: str, default: int, minimum: int, max
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _speed_to_edge_rate(speed: float) -> int:
+    # Edge uses percentage: 1.0x => +0%, 1.5x => +50%, 0.8x => -20%.
+    return max(-50, min(50, round((speed - 1.0) * 100)))
+
+
+def _speed_to_piper_length_scale(speed: float) -> float:
+    # Piper length_scale is inverse: larger means slower.
+    return round(max(0.6, min(2.0, 1.0 / max(speed, 0.1))), 3)
+
+
+def _speed_to_system_rate(speed: float) -> int:
+    # macOS say default is roughly 175 words/min.
+    return round(175 * speed)
