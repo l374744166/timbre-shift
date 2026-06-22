@@ -22,9 +22,16 @@ async function refreshProgress() {
     const progress = await api.progress();
     state.progress = progress;
     qs('#progressStep').textContent = progress.step || '待命';
-    qs('#progressTime').textContent = progress.elapsed_label || '00:00';
+    qs('#progressTime').textContent = formatElapsed(progress.elapsed_seconds);
     qs('#progressBar').style.width = `${Number(progress.percent || 0)}%`;
   } catch {}
+}
+
+function formatElapsed(value) {
+  const seconds = Math.max(0, Number(value || 0));
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
 async function refreshRecentHistory() {
