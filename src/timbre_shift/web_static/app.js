@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { state } from './state.js';
 import { initRouter, navigate } from './router.js';
-import { qs } from './utils.js';
+import { escapeHtml, formatNumber, qs } from './utils.js';
 
 const form = document.getElementById('form');
 
@@ -32,11 +32,25 @@ async function refreshRecentHistory() {
     const data = await api.history();
     const jobs = (data.jobs || []).slice(0, 4);
     qs('#recentHistoryList').innerHTML = jobs.length ? jobs.map((job) => `
-      <div class="mini-item">
-        <strong>${job.song_title || '未命名歌曲'}</strong>
-        <span>${job.voice_profile_name || '未命名音色'} · ${job.engine_id || '-'}</span>
-      </div>`).join('') : '<div class="muted">暂无记录</div>';
+      <a class="mini-item" href="/download/history/${encodeURIComponent(job.id)}/final.mp3">
+        <strong>${escapeHtml(job.song_title || '未命名歌曲')}</strong>
+        <span>${escapeHtml(job.voice_profile_name || '未命名音色')} · ${engineLabel(job.engine_id)} · ${formatHistoryTime(job.created_at)}</span>
+        <span>${formatNumber(job.total_seconds, 1)} 秒 · 点击播放/下载</span>
+      </a>`).join('') : '<div class="muted">暂无记录</div>';
   } catch {}
+}
+
+function engineLabel(engineId) {
+  if (engineId === 'rvc_applio') return 'RVC';
+  if (engineId === 'seedvc') return 'Seed-VC';
+  return escapeHtml(engineId || '-');
+}
+
+function formatHistoryTime(value) {
+  if (!value) return '时间未知';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '时间未知';
+  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 async function boot() {
@@ -50,8 +64,8 @@ async function boot() {
     await api.cancelTask();
     await refreshProgress();
   });
-  qs('#demoPresetButton').addEventListener('click', () => navigate('dashboard', { demo: true }));
-  qs('#quickTrainButton').addEventListener('click', () => navigate('training'));
+  qs('#demoPresetButton')?.addEventListener('click', () => navigate('dashboard', { demo: true }));
+  qs('#quickTrainButton')?.addEventListener('click', () => navigate('training'));
 }
 
 boot();

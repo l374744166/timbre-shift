@@ -79,11 +79,6 @@ def page_html() -> str:
         <h2>最近生成</h2>
         <div id="recentHistoryList" class="mini-list"><div class="muted">暂无记录</div></div>
       </section>
-      <section class="side-panel">
-        <h2>快捷操作</h2>
-        <button class="secondary full" id="demoPresetButton" type="button">演示推荐配置</button>
-        <button class="secondary full" id="quickTrainButton" type="button">进入 RVC 训练</button>
-      </section>
     </aside>
   </div>
 

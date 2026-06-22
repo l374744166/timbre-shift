@@ -30,7 +30,10 @@
   padding:9px;
   border:1px solid var(--line);
   border-radius:8px;
-  background:var(--card)}
+  background:var(--card);
+  color:inherit;
+  text-decoration:none}
+.mini-item:hover {border-color:var(--primary)}
 .mini-item span {color:var(--muted);
   font-size:12px}
 .toolbar {display:flex;

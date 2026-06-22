@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from timbre_shift.variant_actions import find_variant
 from timbre_shift.voice_quality import build_voice_quality_details
 from timbre_shift.web import AppHandler
+from timbre_shift.web_serializers import serialize_voice_model
 from timbre_shift.web_template import page_html
 
 
@@ -77,3 +78,43 @@ def test_success_message_does_not_expose_device_name():
     source = AppHandler.do_POST.__code__.co_consts
     assert "歌曲生成完成" in source
     assert not any(isinstance(item, str) and "M2 Max" in item and "生成完成" in item for item in source)
+
+
+def test_voice_model_serializer_exposes_training_details():
+    model = SimpleNamespace(
+        id="model1",
+        model_name="Demo RVC",
+        engine_id="rvc_applio",
+        status="ready",
+        dataset_seconds=123.0,
+        training_seconds=45.0,
+        model_path="/tmp/model.pth",
+        updated_at="2026-06-22T10:00:00+00:00",
+        metadata_json='{"epochs": 80, "batch_size": 4, "sample_rate": 40000}',
+    )
+    quality = {"sample_count": 3, "sample_seconds": 123.0, "duration_hint": "素材10-30分钟，比较推荐"}
+
+    payload = serialize_voice_model(model, quality)
+
+    assert payload["epochs"] == 80
+    assert payload["batch_size"] == 4
+    assert payload["sample_rate"] == 40000
+    assert payload["dataset_seconds"] == 123.0
+    assert payload["training_seconds"] == 45.0
+
+
+def test_voice_model_serializer_infers_epochs_from_model_filename():
+    model = SimpleNamespace(
+        id="model1",
+        model_name="Demo RVC",
+        engine_id="rvc_applio",
+        status="ready",
+        dataset_seconds=123.0,
+        training_seconds=45.0,
+        model_path="/tmp/Demo_80e_s123.pth",
+        updated_at="2026-06-22T10:00:00+00:00",
+        metadata_json="{}",
+    )
+    quality = {"sample_count": 3, "sample_seconds": 123.0, "duration_hint": "素材10-30分钟，比较推荐"}
+
+    assert serialize_voice_model(model, quality)["epochs"] == 80

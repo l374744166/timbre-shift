@@ -26,3 +26,18 @@
   border-radius:12px;
   padding:14px;
   background:var(--card)}
+.step-card.wide {grid-column:1/-1}
+.sample-list {display:grid;
+  gap:8px}
+.sample-row,.model-row {display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:10px;
+  background:var(--card)}
+.sample-row div,.model-row div {display:grid;
+  gap:3px}
+.sample-row span,.model-row span {color:var(--muted);
+  font-size:13px}
