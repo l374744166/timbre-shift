@@ -38,6 +38,13 @@
   align-items:center;
   gap:12px;
   margin-top:14px}
+.section-head-row {display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px}
+.section-head-row h3 {margin:0}
+.section-head-row p {margin:4px 0 0}
+.rvc-inline-panel {border-color:rgba(91,140,255,.45)}
 .check {display:flex;
   gap:8px;
   align-items:center}
@@ -45,6 +52,7 @@
   min-height:auto}
 @media(max-width:900px) {.choice-grid,.settings-grid,.upload-strip {grid-template-columns:1fr}
 .step-list {grid-template-columns:1fr 1fr}
+.section-head-row {display:grid}
 }
 
 .voice-upload-strip {grid-template-columns:1fr 180px 190px auto auto}
