@@ -29,6 +29,11 @@ def generate_tts_payload(
     provider = str(fields.get("tts_provider", "auto") or "auto")
     voice = str(fields.get("tts_voice", "Tingting") or "Tingting")
     rate = int(str(fields.get("tts_rate", "0") or "0"))
+    length_scale = _float_field(fields, "tts_length_scale", 1.15, 0.6, 2.0)
+    noise_scale = _float_field(fields, "tts_noise_scale", 0.667, 0.1, 1.5)
+    noise_w_scale = _float_field(fields, "tts_noise_w_scale", 0.8, 0.1, 1.5)
+    sentence_silence = _float_field(fields, "tts_sentence_silence", 0.25, 0.0, 2.0)
+    volume = _float_field(fields, "tts_volume", 1.0, 0.2, 2.0)
 
     PROGRESS.reset("生成 TTS 朗读干声", 5, "running")
     tts_dir = root / "data" / "processed" / "web" / "tts"
@@ -40,6 +45,11 @@ def generate_tts_payload(
         rate=rate,
         provider=provider,
         piper_model=default_piper_model_from_env(),
+        length_scale=length_scale,
+        noise_scale=noise_scale,
+        noise_w_scale=noise_w_scale,
+        sentence_silence=sentence_silence,
+        volume=volume,
     )
     PROGRESS.update("TTS 已生成，开始换成目标音色", 18)
 
@@ -76,7 +86,20 @@ def generate_tts_payload(
         metrics["tts_text"] = text
         metrics["tts_provider"] = tts_meta["provider"]
         metrics["tts_voice"] = tts_meta["voice"]
+        metrics["tts_length_scale"] = length_scale
+        metrics["tts_noise_scale"] = noise_scale
+        metrics["tts_noise_w_scale"] = noise_w_scale
+        metrics["tts_sentence_silence"] = sentence_silence
+        metrics["tts_volume"] = volume
         metrics["source_mode"] = "tts_clean_vocal"
     response["message"] = "文字朗读生成完成"
     response["tts"] = tts_meta
     return response
+
+
+def _float_field(fields: dict[str, Any], key: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(str(fields.get(key, default) or default))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))

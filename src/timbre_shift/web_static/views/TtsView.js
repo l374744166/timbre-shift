@@ -17,14 +17,19 @@ export const TtsView = {
     <section class="step-section"><h3>2. 选择目标音色</h3><div class="settings-grid">
       <label>目标音色<select id="ttsVoiceProfile" name="voice_profile_id">${voiceOptions()}</select></label>
       <label>RVC 模型<select id="ttsVoiceModel" name="voice_model_id"><option value="">自动选择可用模型</option></select></label>
-      <label>TTS 声音<select id="ttsVoice" name="tts_voice"><option value="Tingting">中文女声 Tingting</option><option value="Eddy (中文（中国大陆）)">中文男声 Eddy</option><option value="Flo (中文（中国大陆）)">中文女声 Flo</option><option value="Meijia">中文女声 Meijia</option></select></label>
+      <label>系统朗读底声（保底用）<select id="ttsVoice" name="tts_voice"><option value="Tingting">中文女声 Tingting</option><option value="Eddy (中文（中国大陆）)">中文男声 Eddy</option><option value="Flo (中文（中国大陆）)">中文女声 Flo</option><option value="Meijia">中文女声 Meijia</option></select></label>
     </div></section>
     <section class="step-section"><h3>3. 输入朗读文字</h3><textarea id="ttsText" name="tts_text" rows="7" placeholder="请输入要朗读的文字，例如：大家好，欢迎体验 Timbre Shift 本地 AI 音色转换工作台。"></textarea><p class="muted">当前优先使用 Piper 中文模型；模型缺失时自动用本机系统 TTS 保底。</p></section>
     <section class="step-section"><h3>4. 朗读设置</h3><div class="settings-grid">
       <label>生成目标<select name="rvc_preset"><option value="stable_balanced">自然稳定</option><option value="clear_diction">字更清楚</option><option value="stronger_timbre_safe">更像目标音色</option></select></label>
       <label>人声修饰<select name="vocal_style"><option value="neutral">不额外修饰</option><option value="close_intimate">贴脸清晰</option><option value="narrative_soft">柔和叙述</option><option value="low_thick">温暖厚实</option><option value="bright_pop">明亮一点</option></select></label>
-      <label>朗读速度<select name="tts_rate"><option value="0">正常</option><option value="-20">慢一点</option><option value="20">快一点</option></select></label>
-    </div><input type="hidden" name="mode" value="m2max_hq_30"><input type="hidden" name="tts_provider" value="auto"><input type="hidden" name="diction_mode" value="off"></section>
+      <label>Piper 语速<select name="tts_length_scale"><option value="0.95">快一点</option><option value="1.15" selected>正常</option><option value="1.35">慢一点</option><option value="1.55">很慢</option></select></label>
+      <label>Piper 自然度<select name="tts_noise_scale"><option value="0.45">更稳定</option><option value="0.667" selected>自然</option><option value="0.9">更有变化</option></select></label>
+      <label>Piper 节奏变化<select name="tts_noise_w_scale"><option value="0.5">更稳定</option><option value="0.8" selected>自然</option><option value="1.05">更有起伏</option></select></label>
+      <label>句子停顿<select name="tts_sentence_silence"><option value="0.1">短</option><option value="0.25" selected>正常</option><option value="0.5">长</option><option value="0.8">很长</option></select></label>
+      <label>TTS 音量<select name="tts_volume"><option value="0.8">低一点</option><option value="1.0" selected>正常</option><option value="1.2">大一点</option><option value="1.4">更大</option></select></label>
+      <label>系统 TTS 速度（保底用）<select name="tts_rate"><option value="0">正常</option><option value="-20">慢一点</option><option value="20">快一点</option></select></label>
+    </div><p class="muted">Piper 语速数值越大越慢；系统 TTS 速度只在 Piper 模型不可用时生效。</p><input type="hidden" name="mode" value="m2max_hq_30"><input type="hidden" name="tts_provider" value="auto"><input type="hidden" name="diction_mode" value="off"></section>
     <section class="task-panel"><div class="section-head-row"><div><h3>当前任务</h3><p class="muted">TTS 生成和换音进度</p></div><span id="progressStatus" class="status-badge">待命</span></div><div class="progress-card"><div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div></div></section>
     <div class="action-bar"><button id="ttsSubmit" type="submit">生成朗读</button><div id="message" class="message"></div></div>
     ${ResultCard()}

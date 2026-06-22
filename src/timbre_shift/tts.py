@@ -22,6 +22,11 @@ def synthesize_text_to_wav(
     rate: int = 0,
     provider: str = "auto",
     piper_model: Path | None = None,
+    length_scale: float = 1.15,
+    noise_scale: float = 0.667,
+    noise_w_scale: float = 0.8,
+    sentence_silence: float = 0.25,
+    volume: float = 1.0,
 ) -> dict[str, object]:
     """Synthesize text into a mono 44.1 kHz WAV.
 
@@ -44,19 +49,63 @@ def synthesize_text_to_wav(
     if selected_provider == "piper":
         if not piper_model or not piper_model.exists():
             raise FileNotFoundError("未找到 Piper 模型文件")
-        _synthesize_with_piper(cleaned, output, piper_model)
-        return {"provider": "piper", "voice": piper_model.name, "text_length": len(cleaned)}
+        _synthesize_with_piper(
+            cleaned,
+            output,
+            piper_model,
+            length_scale=length_scale,
+            noise_scale=noise_scale,
+            noise_w_scale=noise_w_scale,
+            sentence_silence=sentence_silence,
+            volume=volume,
+        )
+        return {
+            "provider": "piper",
+            "voice": piper_model.name,
+            "text_length": len(cleaned),
+            "length_scale": length_scale,
+            "noise_scale": noise_scale,
+            "noise_w_scale": noise_w_scale,
+            "sentence_silence": sentence_silence,
+            "volume": volume,
+        }
 
     _synthesize_with_macos_say(cleaned, output, voice=voice, rate=rate)
-    return {"provider": "system", "voice": voice, "text_length": len(cleaned)}
+    return {"provider": "system", "voice": voice, "text_length": len(cleaned), "rate": rate}
 
 
-def _synthesize_with_piper(text: str, output: Path, model: Path) -> None:
+def _synthesize_with_piper(
+    text: str,
+    output: Path,
+    model: Path,
+    *,
+    length_scale: float,
+    noise_scale: float,
+    noise_w_scale: float,
+    sentence_silence: float,
+    volume: float,
+) -> None:
     piper = _piper_binary()
     if not piper:
         raise FileNotFoundError("未安装 Piper TTS")
     process = subprocess.run(
-        [piper, "--model", str(model), "--output_file", str(output)],
+        [
+            piper,
+            "--model",
+            str(model),
+            "--output_file",
+            str(output),
+            "--length-scale",
+            str(length_scale),
+            "--noise-scale",
+            str(noise_scale),
+            "--noise-w-scale",
+            str(noise_w_scale),
+            "--sentence-silence",
+            str(sentence_silence),
+            "--volume",
+            str(volume),
+        ],
         input=text,
         text=True,
         capture_output=True,
