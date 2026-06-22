@@ -297,7 +297,7 @@ export const DashboardView = {
   },
 };
 
-function renderResult(data) {
+export function renderResult(data) {
   state.lastResult = data;
   const result = qs('#result');
   result.classList.remove('hidden');

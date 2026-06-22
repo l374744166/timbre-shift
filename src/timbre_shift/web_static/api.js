@@ -8,6 +8,7 @@ export const api = {
   check: () => fetch('/api/check').then(parse),
   progress: () => fetch('/api/progress').then(parse),
   history: () => fetch('/api/history').then(parse),
+  latestResult: () => fetch('/api/latest-result').then(parse),
   voiceModels: (voiceId, engineId) => fetch(`/api/voice-models?voice_id=${encodeURIComponent(voiceId || '')}&engine_id=${encodeURIComponent(engineId || 'rvc_applio')}`).then(parse),
   voiceSamples: (voiceId) => fetch(`/api/voice-samples?voice_id=${encodeURIComponent(voiceId || '')}`).then(parse),
   voicePreference: (voiceId) => fetch(`/api/voice-preference?voice_id=${encodeURIComponent(voiceId || '')}`).then(parse),

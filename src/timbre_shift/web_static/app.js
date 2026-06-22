@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { state } from './state.js';
 import { initRouter, navigate } from './router.js';
 import { escapeHtml, formatNumber, qs } from './utils.js';
+import { renderResult } from './views/DashboardView.js';
 
 const form = document.getElementById('form');
 
@@ -24,6 +25,9 @@ async function refreshProgress() {
     qs('#progressStep').textContent = progress.step || '待命';
     qs('#progressTime').textContent = formatElapsed(progress.elapsed_seconds);
     qs('#progressBar').style.width = `${Number(progress.percent || 0)}%`;
+    if (progress.status === 'completed' && !state.lastResult && state.currentView === 'dashboard') {
+      await restoreLatestResult();
+    }
   } catch {}
 }
 
@@ -39,11 +43,21 @@ async function refreshRecentHistory() {
     const data = await api.history();
     const jobs = (data.jobs || []).slice(0, 4);
     qs('#recentHistoryList').innerHTML = jobs.length ? jobs.map((job) => `
-      <a class="mini-item" href="/download/history/${encodeURIComponent(job.id)}/final.mp3">
+      <button class="mini-item recent-history-jump" type="button">
         <strong>${escapeHtml(job.song_title || '未命名歌曲')}</strong>
         <span>${escapeHtml(job.voice_profile_name || '未命名音色')} · ${engineLabel(job.engine_id)} · ${formatHistoryTime(job.created_at)}</span>
-        <span>${formatNumber(job.total_seconds, 1)} 秒 · 点击播放/下载</span>
-      </a>`).join('') : '<div class="muted">暂无记录</div>';
+        <span>${formatNumber(job.total_seconds, 1)} 秒 · 打开生成历史</span>
+      </button>`).join('') : '<div class="muted">暂无记录</div>';
+  } catch {}
+}
+
+async function restoreLatestResult() {
+  try {
+    const data = await api.latestResult();
+    if (state.currentView !== 'dashboard') return;
+    renderResult(data);
+    const message = qs('#message');
+    if (message) message.textContent = data.message || '已恢复最近一次生成结果';
   } catch {}
 }
 
@@ -65,8 +79,13 @@ async function boot() {
   await refreshEnvironment();
   await refreshRecentHistory();
   await refreshProgress();
+  await restoreLatestResult();
   setInterval(refreshProgress, 1200);
   setInterval(refreshRecentHistory, 15000);
+  qs('#recentHistoryList')?.addEventListener('click', (event) => {
+    if (!event.target.closest('.recent-history-jump')) return;
+    navigate('history');
+  });
   qs('#cancelTaskButton')?.addEventListener('click', async () => {
     await api.cancelTask();
     await refreshProgress();

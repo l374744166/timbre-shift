@@ -57,6 +57,36 @@ def build_generation_response(
     }
 
 
+def build_latest_result_response(output_dir: Path) -> dict[str, object]:
+    metrics_payload = read_metrics_payload(output_dir / "metrics.json")
+    final_wav = output_dir / "final.wav"
+    final_mp3 = output_dir / "final.mp3"
+    if not final_wav.exists() and not final_mp3.exists():
+        raise FileNotFoundError("还没有可恢复的生成结果")
+    output_basename = build_output_basename(metrics_payload)
+    dry_vocal_mp3 = output_dir / "dry_vocal.mp3"
+    dry_vocal_wav = output_dir / "dry_vocal.wav"
+    return {
+        "download_url": f"/download/{final_mp3.name if final_mp3.exists() else final_wav.name}",
+        "download_mp3_url": f"/download/{final_mp3.name}" if final_mp3.exists() else None,
+        "download_wav_url": f"/download/{final_wav.name}" if final_wav.exists() else None,
+        "dry_vocal_download_mp3_url": f"/download/{dry_vocal_mp3.name}" if dry_vocal_mp3.exists() else None,
+        "dry_vocal_download_wav_url": f"/download/{dry_vocal_wav.name}" if dry_vocal_wav.exists() else None,
+        "mp3_filename": f"{output_basename}.mp3" if final_mp3.exists() else None,
+        "wav_filename": f"{output_basename}.wav" if final_wav.exists() else None,
+        "dry_vocal_mp3_filename": f"{output_basename}_干声.mp3" if dry_vocal_mp3.exists() else None,
+        "dry_vocal_wav_filename": f"{output_basename}_干声.wav" if dry_vocal_wav.exists() else None,
+        "output_basename": output_basename,
+        "scorecard": build_result_scorecard(metrics_payload),
+        "mode": "real",
+        "message": "已恢复最近一次生成结果",
+        "render_mode": metrics_payload.get("render_mode"),
+        "engine_id": metrics_payload.get("engine_id"),
+        "metrics": metrics_payload,
+        "variants": build_variant_downloads(metrics_payload),
+    }
+
+
 def write_error_metrics(path: Path, error: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

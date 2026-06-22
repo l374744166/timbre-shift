@@ -32,6 +32,7 @@
   border-radius:8px;
   background:var(--card);
   color:inherit;
+  text-align:left;
   text-decoration:none}
 .mini-item:hover {border-color:var(--primary)}
 .mini-item span {color:var(--muted);

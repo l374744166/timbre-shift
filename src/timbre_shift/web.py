@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,7 +30,7 @@ from .variant_actions import record_variant_feedback, select_variant
 from .voice_preferences import save_voice_preference
 from .web_generation import generate_song_payload
 from .web_queries import voice_models_payload, voice_preference_payload, voice_samples_payload
-from .web_results import create_test_result, write_error_metrics
+from .web_results import build_latest_result_response, create_test_result, write_error_metrics
 from .web_serializers import serialize_voice_sample
 from .web_state import PROGRESS
 from .web_template import page_html
@@ -49,6 +50,10 @@ UPLOAD_ROOT = ROOT / "data" / "raw" / "web_uploads"
 OUTPUT_DIR = ROOT / "outputs" / "web"
 HISTORY_ROOT = ROOT / "outputs" / "history"
 STATIC_ROOT = Path(__file__).with_name("web_static")
+
+
+def safe_history_job_id(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "", value)
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -73,6 +78,12 @@ class AppHandler(BaseHTTPRequestHandler):
         if request_path == "/api/history":
             self.send_json({"jobs": list_generation_history(HISTORY_ROOT)})
             return
+        if request_path == "/api/latest-result":
+            try:
+                self.send_json(build_latest_result_response(OUTPUT_DIR))
+            except FileNotFoundError as exc:
+                self.send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
+            return
         if request_path == "/api/voice-preference":
             query = parse_qs(parsed.query)
             voice_id = (query.get("voice_id") or [""])[0]
@@ -90,10 +101,11 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(voice_models_payload(voice_id, engine_id))
             return
         if request_path.startswith("/download/history/"):
-            parts = [safe_filename(part) for part in request_path.removeprefix("/download/history/").split("/") if part]
-            if len(parts) != 2:
+            raw_parts = [part for part in request_path.removeprefix("/download/history/").split("/") if part]
+            if len(raw_parts) != 2:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
+            parts = [safe_history_job_id(raw_parts[0]), safe_filename(raw_parts[1])]
             download_name = parse_qs(parsed.query).get("name", [None])[0]
             self.send_file(HISTORY_ROOT / parts[0] / parts[1], download_name=download_name)
             return
@@ -120,10 +132,11 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_static_file(request_path.removeprefix("/static/"), head_only=True)
             return
         if request_path.startswith("/download/history/"):
-            parts = [safe_filename(part) for part in request_path.removeprefix("/download/history/").split("/") if part]
-            if len(parts) != 2:
+            raw_parts = [part for part in request_path.removeprefix("/download/history/").split("/") if part]
+            if len(raw_parts) != 2:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
+            parts = [safe_history_job_id(raw_parts[0]), safe_filename(raw_parts[1])]
             download_name = parse_qs(parsed.query).get("name", [None])[0]
             self.send_file(HISTORY_ROOT / parts[0] / parts[1], head_only=True, download_name=download_name)
             return
