@@ -22,7 +22,7 @@ export const TtsView = {
     <section class="step-section"><h3>3. 输入朗读文字</h3><textarea id="ttsText" name="tts_text" rows="7" placeholder="请输入要朗读的文字，例如：大家好，欢迎体验 Timbre Shift 本地 AI 音色转换工作台。"></textarea><p class="muted">当前优先使用 Piper 中文模型；模型缺失时自动用本机系统 TTS 保底。</p></section>
     <section class="step-section"><h3>4. 朗读设置</h3><div class="settings-grid">
       <label>生成目标<select name="rvc_preset"><option value="stable_balanced">自然稳定</option><option value="clear_diction">字更清楚</option><option value="stronger_timbre_safe">更像目标音色</option></select></label>
-      <label>人声修饰<select name="vocal_style"><option value="neutral">不额外修饰</option><option value="close_intimate">贴脸清晰</option><option value="narrative_soft">柔和叙述</option><option value="low_thick">温暖厚实</option><option value="bright_pop">明亮一点</option></select></label>
+      <label id="ttsVocalStyleLabel" class="hidden">RVC 人声修饰<select id="ttsVocalStyle" name="vocal_style" disabled><option value="neutral">不额外修饰</option><option value="close_intimate">贴脸清晰</option><option value="narrative_soft">柔和叙述</option><option value="low_thick">温暖厚实</option><option value="bright_pop">明亮一点</option></select></label>
       <label>Piper 语速<select name="tts_length_scale"><option value="0.95">快一点</option><option value="1.15" selected>正常</option><option value="1.35">慢一点</option><option value="1.55">很慢</option></select></label>
       <label>Piper 自然度<select name="tts_noise_scale"><option value="0.45">更稳定</option><option value="0.667" selected>自然</option><option value="0.9">更有变化</option></select></label>
       <label>Piper 节奏变化<select name="tts_noise_w_scale"><option value="0.5">更稳定</option><option value="0.8" selected>自然</option><option value="1.05">更有起伏</option></select></label>
@@ -41,6 +41,16 @@ export const TtsView = {
     const syncCards = () => {
       engineInputs.forEach((input) => input.closest('.choice-card')?.classList.toggle('selected', input.checked));
     };
+    const syncEngineControls = () => {
+      const isRvc = form.elements.engine_id.value === 'rvc_applio';
+      const styleLabel = qs('#ttsVocalStyleLabel');
+      const styleSelect = qs('#ttsVocalStyle');
+      styleLabel?.classList.toggle('hidden', !isRvc);
+      if (styleSelect) {
+        styleSelect.disabled = !isRvc;
+        if (!isRvc) styleSelect.value = 'neutral';
+      }
+    };
     const loadModels = async () => {
       const engine = form.elements.engine_id.value;
       if (engine !== 'rvc_applio') {
@@ -52,9 +62,10 @@ export const TtsView = {
       const ready = (data.models || []).filter((model) => model.status === 'ready');
       modelSelect.innerHTML = '<option value="">自动选择可用模型</option>' + ready.map((model) => `<option value="${model.id}">${model.name || 'RVC 模型'}</option>`).join('');
     };
-    engineInputs.forEach((input) => input.addEventListener('change', () => { syncCards(); loadModels().catch(() => {}); }));
+    engineInputs.forEach((input) => input.addEventListener('change', () => { syncCards(); syncEngineControls(); loadModels().catch(() => {}); }));
     qs('#ttsVoiceProfile').addEventListener('change', () => loadModels().catch(() => {}));
     syncCards();
+    syncEngineControls();
     loadModels().catch(() => {});
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
