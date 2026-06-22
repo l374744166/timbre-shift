@@ -45,6 +45,12 @@
 .section-head-row h3 {margin:0}
 .section-head-row p {margin:4px 0 0}
 .rvc-inline-panel {border-color:rgba(91,140,255,.45)}
+.task-panel {display:grid;
+  gap:12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:14px;
+  background:var(--card)}
 .check {display:flex;
   gap:8px;
   align-items:center}

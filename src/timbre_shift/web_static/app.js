@@ -22,9 +22,12 @@ async function refreshProgress() {
   try {
     const progress = await api.progress();
     state.progress = progress;
-    qs('#progressStep').textContent = progress.step || '待命';
-    qs('#progressTime').textContent = formatElapsed(progress.elapsed_seconds);
-    qs('#progressBar').style.width = `${Number(progress.percent || 0)}%`;
+    const statusText = progress.status === 'completed' ? '已完成' : (progress.status === 'running' ? '运行中' : (progress.status === 'failed' ? '失败' : '待命'));
+    qs('#progressStep') && (qs('#progressStep').textContent = progress.step || '待命');
+    qs('#progressTime') && (qs('#progressTime').textContent = progress.status === 'completed' ? `完成用时 ${formatElapsed(progress.elapsed_seconds)}` : formatElapsed(progress.elapsed_seconds));
+    qs('#progressBar') && (qs('#progressBar').style.width = `${Number(progress.percent || 0)}%`);
+    qs('#progressStatus') && (qs('#progressStatus').textContent = statusText);
+    qs('#progressStatus') && (qs('#progressStatus').className = `status-badge ${progress.status === 'completed' ? 'ok' : progress.status === 'failed' ? 'warn' : ''}`);
     if (progress.status === 'completed' && !state.lastResult && state.currentView === 'dashboard') {
       await restoreLatestResult();
     }

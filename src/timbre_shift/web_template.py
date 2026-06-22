@@ -68,13 +68,6 @@ def page_html() -> str:
 
     <aside class="rightbar">
       <section class="side-panel">
-        <h2>当前任务</h2>
-        <div class="progress-card">
-          <div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div>
-          <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
-        </div>
-      </section>
-      <section class="side-panel">
         <h2>最近生成</h2>
         <div id="recentHistoryList" class="mini-list"><div class="muted">暂无记录</div></div>
       </section>

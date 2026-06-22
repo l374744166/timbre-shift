@@ -210,7 +210,15 @@ export const DashboardView = {
     </div>
     <details class="details-panel"><summary>${copy.advancedTitle}</summary><div class="settings-grid"><label>源人声清理<select id="preRvcCleanupMode" name="pre_rvc_cleanup_mode"><option value="off">关闭</option><option value="standard">标准</option><option value="strong">强力</option></select></label><label>混音风格<select id="mixStyle" name="mix_style"><option value="natural">自然</option><option value="vocal_forward">人声靠前</option><option value="blend_with_backing">融进伴奏</option></select></label>${isRvc() ? '<label>咬字增强<select id="dictionMode" name="diction_mode"><option value="off">关闭</option><option value="light" selected>轻微</option><option value="medium">中等</option><option value="strong">强</option></select></label><label>音色记忆库<select id="rvcIndexRate" name="rvc_index_rate"><option value="0">关闭</option><option value="0.25">轻度</option><option value="0.45">中度</option></select></label><label class="check"><input id="allowExperimentalIndex" name="allow_experimental_index" type="checkbox">开启实验音色记忆库</label>' : '<input type="hidden" name="diction_mode" value="off"><input type="hidden" name="rvc_index_rate" value="0">'}</div></details>
     <input type="hidden" name="mode" value="m2max_hq_30"><input type="hidden" id="voiceModel" name="voice_model_id"><input type="hidden" name="song_id" id="songIdField"><input type="hidden" name="voice_profile_id" id="voiceIdField"><input type="hidden" name="mix_style" value="natural"><input type="hidden" id="generateVariants" name="generate_variants" value="">
-    <div class="action-bar"><button id="submit" type="submit">${copy.submit}</button><div id="message" class="message"></div></div></section>${ResultCard()}</form>`;
+    <div class="action-bar"><button id="submit" type="submit">${copy.submit}</button><div id="message" class="message"></div></div></section>
+    <section class="task-panel">
+      <div class="section-head-row"><div><h3>当前任务</h3><p class="muted">生成进度和完成用时</p></div><span id="progressStatus" class="status-badge">待命</span></div>
+      <div class="progress-card">
+        <div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      </div>
+    </section>
+    ${ResultCard()}</form>`;
   },
   mount: () => {
     const selectVoice = (id) => {

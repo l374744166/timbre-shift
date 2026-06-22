@@ -91,7 +91,7 @@ class ProgressState:
                 "error": self.error,
                 "cancel_requested": bool(getattr(self, "cancel_requested", False)),
                 "active_process_count": len(self._processes),
-                "elapsed_seconds": int(now - self.started_at) if self.status != "idle" else 0,
+                "elapsed_seconds": int((self.updated_at if self.status in {"completed", "failed", "cancelled"} else now) - self.started_at) if self.status != "idle" else 0,
                 "updated_seconds_ago": int(now - self.updated_at),
             }
 
