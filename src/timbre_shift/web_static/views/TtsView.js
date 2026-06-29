@@ -37,7 +37,7 @@ export const TtsView = {
       <label class="piper-control hidden">Piper 句子停顿<select name="tts_sentence_silence"><option value="0.1">短</option><option value="0.25" selected>正常</option><option value="0.5">长</option><option value="0.8">很长</option></select></label>
       <label class="piper-control hidden">Piper 音量<select name="tts_volume"><option value="0.8">低一点</option><option value="1.0" selected>正常</option><option value="1.2">大一点</option><option value="1.4">更大</option></select></label>
     </div><p class="muted">推荐用 Edge 在线中文；语速倍数只控制快慢，语调数值 1-100 单独控制音高，50 为正常。</p><input type="hidden" name="mode" value="m2max_hq_30"><input type="hidden" name="diction_mode" value="off"></section>
-    <section class="task-panel"><div class="section-head-row"><div><h3>当前任务</h3><p class="muted">TTS 生成和换音进度</p></div><span id="progressStatus" class="status-badge">待命</span></div><div class="progress-card"><div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div></div></section>
+    <section class="task-panel"><div class="section-head-row"><div><h3>当前任务</h3><p class="muted">TTS 生成和换音进度</p></div><span id="progressStatus" class="status-badge">待命</span></div><div class="progress-card"><div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressDetails" class="progress-details hidden"></div></div></section>
     <div class="action-bar"><button id="ttsSubmit" type="submit">生成朗读</button><div id="message" class="message"></div></div>
     ${ResultCard()}
   </form>`,

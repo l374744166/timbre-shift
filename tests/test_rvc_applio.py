@@ -92,3 +92,90 @@ class RVCApplioTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_train_progress_reports_saved_epoch_without_jumping_to_98_percent():
+    from timbre_shift.library_models import VoiceModel, VoiceProfile
+    from timbre_shift.rvc_applio_train import train_applio_model
+    from timbre_shift.rvc_mlx import RVCDatasetResult
+
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        applio_dir = root / "applio"
+        applio_dir.mkdir()
+        dataset = root / "dataset"
+        wavs = dataset / "wavs"
+        wavs.mkdir(parents=True)
+        (wavs / "sample.wav").write_bytes(b"wav")
+        logs = applio_dir / "logs" / "ts_voice_test"
+        logs.mkdir(parents=True)
+        model_file = logs / "ts_voice_test_12e_1860s_best_epoch.pth"
+        index_file = logs / "ts_voice_test.index"
+        check = ApplioCheck(True, applio_dir, applio_dir / "python", [])
+        progress_calls = []
+
+        profile = VoiceProfile(
+            id="voice-test",
+            name="测试音色",
+            description=None,
+            source_type="rvc",
+            rights_status="confirmed",
+            allowed_as_target=True,
+            raw_audio_path="",
+            ref_8s_path=None,
+            ref_16s_path=None,
+            ref_20s_path=None,
+            ref_25s_path=None,
+            preview_mp3_path=None,
+            sha256="",
+            duration_seconds=None,
+            sample_rate=None,
+            channels=None,
+            source_song_id=None,
+            created_at="now",
+            updated_at="now",
+        )
+
+        def fake_run(_root, _code, on_output=None):
+            if on_output:
+                on_output("Saved model ts_voice_test_12e_1860s_best_epoch.pth")
+            model_file.write_bytes(b"model")
+            index_file.write_bytes(b"index")
+
+        def fake_create_voice_model_record(**kwargs):
+            return VoiceModel(
+                id="model-test",
+                voice_id=kwargs["voice_id"],
+                engine_id=kwargs["engine_id"],
+                model_name=kwargs["model_name"],
+                model_path=str(kwargs["model_path"]),
+                index_path=str(kwargs["index_path"]),
+                config_path=None,
+                dataset_path=str(kwargs["dataset_path"]),
+                training_seconds=kwargs["training_seconds"],
+                dataset_seconds=kwargs["dataset_seconds"],
+                status="ready",
+                created_at="now",
+                updated_at="now",
+                metadata_json=None,
+            )
+
+        with patch("timbre_shift.rvc_applio_train.get_voice_profile", return_value=profile), \
+            patch("timbre_shift.rvc_applio_train.check_applio", return_value=check), \
+            patch("timbre_shift.rvc_applio_train.prepare_applio_dataset", return_value=RVCDatasetResult(dataset, dataset / "metadata.json", 120.0, 1, 1, ["sample.wav"], [])), \
+            patch("timbre_shift.rvc_applio_train._run_applio_python", side_effect=fake_run), \
+            patch("timbre_shift.rvc_applio_train.create_voice_model_record", side_effect=fake_create_voice_model_record):
+            train_applio_model(
+                "voice-test",
+                library_dir=root,
+                db_path=root / "library.db",
+                applio_dir=applio_dir,
+                epochs=80,
+                progress=lambda step, percent, details=None: progress_calls.append((step, percent, details or {})),
+            )
+
+        saved_updates = [call for call in progress_calls if call[2].get("latest_saved_epoch") == 12]
+        assert saved_updates
+        assert saved_updates[-1][1] < 98
+        assert saved_updates[-1][2]["current_epoch"] == 12
+        assert saved_updates[-1][2]["total_epochs"] == 80

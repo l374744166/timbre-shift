@@ -89,3 +89,17 @@
 .modal-close {min-width:38px;
   padding:0;
   font-size:20px}
+
+.progress-details {display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:8px;
+  margin-top:8px}
+.progress-detail-item {border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px;
+  background:var(--panel)}
+.progress-detail-item span {display:block;
+  color:var(--muted);
+  font-size:12px;
+  margin-bottom:3px}
+.progress-detail-item strong {font-size:14px}

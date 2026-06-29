@@ -226,7 +226,7 @@ export const DashboardView = {
       <div class="section-head-row"><div><h3>当前任务</h3><p class="muted">生成进度和完成用时</p></div><span id="progressStatus" class="status-badge">待命</span></div>
       <div class="progress-card">
         <div class="progress-meta"><span id="progressStep">待命</span><span id="progressTime">00:00</span></div>
-        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressDetails" class="progress-details hidden"></div>
       </div>
     </section>
     ${ResultCard()}</form>`;

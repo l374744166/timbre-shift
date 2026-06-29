@@ -32,7 +32,7 @@ def train_applio_payload(fields: dict[str, object]) -> dict[str, object]:
     epochs = int(fields.get("epochs", 10) or 10)
     if epochs < 1 or epochs > 120:
         raise ValueError("训练轮数需要在 1 到 120 之间")
-    PROGRESS.reset("开始 Applio RVC 训练", 2, "running")
+    PROGRESS.reset("开始 Applio RVC 训练", 2, "running", {"task_type": "rvc_training", "total_epochs": epochs, "current_epoch": 0, "stage": "启动训练"})
     model = train_applio_model(
         voice_id,
         library_dir=DEFAULT_LIBRARY_DIR,
@@ -40,9 +40,9 @@ def train_applio_payload(fields: dict[str, object]) -> dict[str, object]:
         epochs=epochs,
         batch_size=4,
         sample_rate=40000,
-        progress=lambda step, percent: PROGRESS.update(step, percent),
+        progress=lambda step, percent, details=None: PROGRESS.update(step, percent, details=details),
     )
-    PROGRESS.update("Applio RVC 训练完成", 100, "completed")
+    PROGRESS.update("Applio RVC 训练完成", 100, "completed", {"task_type": "rvc_training", "total_epochs": epochs, "current_epoch": epochs, "stage": "训练完成"})
     return {
         "id": model.id,
         "name": model.model_name,

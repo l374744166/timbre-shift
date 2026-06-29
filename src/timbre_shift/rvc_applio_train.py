@@ -7,7 +7,7 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Any
 
 from .library import (
     DEFAULT_DB_PATH,
@@ -44,7 +44,7 @@ def train_applio_model(
     epochs: int = 10,
     batch_size: int = 4,
     sample_rate: int = 40000,
-    progress: Callable[[str, int], None] | None = None,
+    progress: Callable[[str, int, dict[str, Any] | None], None] | None = None,
 ) -> VoiceModel:
     profile = get_voice_profile(voice_id, db_path=db_path)
     if not profile.allowed_as_target:
@@ -56,7 +56,7 @@ def train_applio_model(
         raise RuntimeError(f"Applio RVC 未安装或未配置：{', '.join(check.missing)}")
 
     if progress:
-        progress("准备 Applio RVC 数据集", 5)
+        progress("准备 Applio RVC 数据集", 5, {"task_type": "rvc_training", "stage": "准备数据集", "current_epoch": 0, "total_epochs": epochs})
     dataset = prepare_applio_dataset(
         voice_id,
         library_dir=library_dir,
@@ -69,21 +69,60 @@ def train_applio_model(
     start = time.perf_counter()
     wall_start = time.time()
     if progress:
-        progress("检查 Applio RVC 训练资源", 10)
+        progress("检查 Applio RVC 训练资源", 10, {"task_type": "rvc_training", "stage": "检查训练资源", "current_epoch": 0, "total_epochs": epochs})
+
+    latest_epoch = 0
+
+    def epoch_percent(epoch: int) -> int:
+        return min(95, 20 + int(epoch / max(epochs, 1) * 72))
+
+    def progress_details(stage: str, epoch: int | None = None, saved: bool = False) -> dict[str, object]:
+        current = min(epochs, max(latest_epoch, epoch or 0))
+        return {
+            "task_type": "rvc_training",
+            "stage": stage,
+            "current_epoch": current,
+            "total_epochs": epochs,
+            "latest_saved_epoch": current if saved else None,
+            "model_name": model_name,
+        }
+
+    def parse_epoch(line: str) -> int | None:
+        patterns = [
+            r"\bepoch[=:\s]+(\d+)\b",
+            r"\bEpoch[=:\s]+(\d+)\b",
+            r"_(\d+)e_\d+s(?:_best_epoch)?\.pth",
+            r"\b(\d+)e\b",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, line)
+            if match:
+                return min(epochs, int(match.group(1)))
+        return None
 
     def handle_output(line: str) -> None:
+        nonlocal latest_epoch
         if not progress:
             return
-        epoch_match = re.search(r"\bepoch=(\d+)\b", line)
-        if epoch_match:
-            epoch = min(epochs, int(epoch_match.group(1)))
-            percent = min(95, 20 + int(epoch / max(epochs, 1) * 72))
-            progress(f"Applio RVC 训练第 {epoch}/{epochs} 轮", percent)
+        parsed_epoch = parse_epoch(line)
+        if parsed_epoch is not None:
+            latest_epoch = max(latest_epoch, parsed_epoch)
+            stage = "已保存阶段模型，继续训练" if "saved" in line.lower() or "best_epoch" in line else "训练模型"
+            progress(
+                f"Applio RVC 训练第 {latest_epoch}/{epochs} 轮",
+                epoch_percent(latest_epoch),
+                progress_details(stage, latest_epoch, saved=stage.startswith("已保存")),
+            )
             return
-        if "Training has been successfully completed" in line:
-            progress("Applio RVC 正在导出模型", 96)
-        elif "Saved model" in line:
-            progress("Applio RVC 模型已保存", 98)
+        lowered = line.lower()
+        if "training has been successfully completed" in lowered or "successfully completed" in lowered:
+            progress("Applio RVC 正在导出模型", 96, progress_details("导出模型", epochs))
+        elif "saved model" in lowered:
+            progress(
+                f"Applio RVC 已保存阶段模型，继续训练 {latest_epoch}/{epochs} 轮",
+                epoch_percent(latest_epoch),
+                progress_details("已保存阶段模型，继续训练", latest_epoch, saved=True),
+            )
 
     code = f"""
 import json

@@ -16,7 +16,7 @@ class ProgressState:
         self._processes: dict[int, subprocess.Popen[object]] = {}
         self.reset("待命", 0, "idle")
 
-    def reset(self, step: str, percent: int, status: str) -> None:
+    def reset(self, step: str, percent: int, status: str, details: dict[str, object] | None = None) -> None:
         with self._lock:
             now = time.time()
             self.started_at = now
@@ -26,12 +26,15 @@ class ProgressState:
             self.status = status
             self.error = ""
             self.cancel_requested = False
+            self.details = dict(details or {})
 
-    def update(self, step: str, percent: int, status: str = "running") -> None:
+    def update(self, step: str, percent: int, status: str = "running", details: dict[str, object] | None = None) -> None:
         with self._lock:
             self.step = step
             self.percent = percent
             self.status = status
+            if details is not None:
+                self.details = dict(details)
             if status in {"running", "completed"}:
                 self.error = ""
             if status == "completed":
@@ -93,6 +96,7 @@ class ProgressState:
                 "active_process_count": len(self._processes),
                 "elapsed_seconds": int((self.updated_at if self.status in {"completed", "failed", "cancelled"} else now) - self.started_at) if self.status != "idle" else 0,
                 "updated_seconds_ago": int(now - self.updated_at),
+                "details": dict(getattr(self, "details", {})),
             }
 
 

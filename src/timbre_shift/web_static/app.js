@@ -28,10 +28,33 @@ async function refreshProgress() {
     qs('#progressBar') && (qs('#progressBar').style.width = `${Number(progress.percent || 0)}%`);
     qs('#progressStatus') && (qs('#progressStatus').textContent = statusText);
     qs('#progressStatus') && (qs('#progressStatus').className = `status-badge ${progress.status === 'completed' ? 'ok' : progress.status === 'failed' ? 'warn' : ''}`);
+    renderProgressDetails(progress);
     if (progress.status === 'completed' && !state.lastResult && state.currentView === 'dashboard') {
       await restoreLatestResult();
     }
   } catch {}
+}
+
+function renderProgressDetails(progress) {
+  const target = qs('#progressDetails');
+  if (!target) return;
+  const details = progress.details || {};
+  if (details.task_type !== 'rvc_training') {
+    target.innerHTML = '';
+    target.classList.add('hidden');
+    return;
+  }
+  const current = Number(details.current_epoch || 0);
+  const total = Number(details.total_epochs || 0);
+  const stage = details.stage || progress.step || '训练中';
+  const saved = details.latest_saved_epoch ? `第 ${details.latest_saved_epoch} 轮已保存阶段模型` : '等待阶段保存';
+  const percent = total > 0 ? Math.round((current / total) * 100) : Number(progress.percent || 0);
+  target.classList.remove('hidden');
+  target.innerHTML = `
+    <div class="progress-detail-item"><span>训练轮数</span><strong>${current}/${total || '-'}</strong></div>
+    <div class="progress-detail-item"><span>轮数进度</span><strong>${total ? `${percent}%` : '-'}</strong></div>
+    <div class="progress-detail-item"><span>当前阶段</span><strong>${escapeHtml(stage)}</strong></div>
+    <div class="progress-detail-item"><span>最新保存</span><strong>${escapeHtml(saved)}</strong></div>`;
 }
 
 function formatElapsed(value) {
