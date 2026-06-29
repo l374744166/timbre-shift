@@ -43,8 +43,7 @@ export const TrainingView = {
       <div class="step-card">1. 选择音色<select id="trainingVoice">${qs('#voiceProfile').innerHTML}</select></div>
       <div class="step-card wide">2. 训练素材<div id="voiceSampleList" class="sample-list">选择音色后显示素材明细</div></div>
       <div class="step-card wide">3. 已训练模型<div id="voiceModelList" class="sample-list">选择音色后显示模型明细</div></div>
-      <div class="step-card">4. 一键训练<select id="applioEpochs"><option value="10">10 轮</option><option value="40">40 轮</option><option value="80">80 轮</option></select><button id="trainApplioButton" type="button">准备并训练</button></div>
-      <div class="step-card">5. 单独准备<button class="secondary" id="prepareApplioButton" type="button">只准备数据集</button><span class="muted">排查素材时用</span></div>
+      <div class="step-card">4. 一键训练<select id="applioEpochs"><option value="10">10 轮</option><option value="40">40 轮</option><option value="80">80 轮</option></select><button id="trainApplioButton" type="button">准备并训练</button><span class="muted">会自动准备数据集</span></div>
       <div class="step-card wide">训练状态<div id="applioTrainMessage" class="message">模型已保存后可回工作台生成歌曲</div></div>
     </div>
   </section>`,
@@ -104,19 +103,6 @@ export const TrainingView = {
       try {
         const data = await api.post('/api/delete-voice-model', body);
         message.textContent = data.message || '模型已删除';
-        await refresh();
-      } catch (error) {
-        message.textContent = error.message;
-      }
-    });
-
-    qs('#prepareApplioButton').addEventListener('click', async () => {
-      const body = new FormData();
-      body.append('voice_profile_id', voice.value);
-      message.textContent = '正在准备数据集...';
-      try {
-        const data = await api.post('/api/applio-prepare', body);
-        message.textContent = `${data.message || '数据集已准备'} · ${formatSeconds(data.total_seconds)} · ${data.sample_count || 0} 个素材`;
         await refresh();
       } catch (error) {
         message.textContent = error.message;
