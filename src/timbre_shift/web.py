@@ -438,11 +438,16 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def send_json(self, payload: Dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # The browser can disconnect after a long-running request finishes.
+            # That should not turn a completed training job into a failed one.
+            return
 
     def send_static_file(self, relative_path: str, head_only: bool = False) -> None:
         if not relative_path or "\x00" in relative_path:
