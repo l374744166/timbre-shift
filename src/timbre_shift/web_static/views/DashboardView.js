@@ -83,7 +83,7 @@ function rvcTrainingPanel() {
       <div class="modal-panel">
         <div class="modal-head"><div><h3 id="rvcTrainModalTitle">RVC 训练设置</h3><p class="muted" id="rvcTrainModalSubtitle">确认训练轮数后再开始</p></div><button class="secondary modal-close" id="rvcTrainModalClose" type="button">×</button></div>
         <div class="settings-grid">
-          <label>训练轮数<select id="dashboardApplioEpochs"><option value="10">10 轮 · 快速测试</option><option value="40">40 轮 · 日常推荐</option><option value="80">80 轮 · 更认真训练</option></select></label>
+          <label>训练轮数<select id="dashboardApplioEpochs"><option value="10">10 轮 · 快速测试</option><option value="40">40 轮 · 日常推荐</option><option value="80">80 轮 · 更认真训练</option><option value="120">120 轮 · 高质量训练</option></select></label>
           <label>当前音色<input id="rvcTrainVoiceName" type="text" readonly value="未选择"></label>
           <label>训练素材<input id="rvcTrainSampleCount" type="text" readonly value="0 个"></label>
         </div>

@@ -43,7 +43,7 @@ export const TrainingView = {
       <div class="step-card">1. 选择音色<select id="trainingVoice">${qs('#voiceProfile').innerHTML}</select></div>
       <div class="step-card wide">2. 训练素材<div id="voiceSampleList" class="sample-list">选择音色后显示素材明细</div></div>
       <div class="step-card wide">3. 已训练模型<div id="voiceModelList" class="sample-list">选择音色后显示模型明细</div></div>
-      <div class="step-card">4. 一键训练<select id="applioEpochs"><option value="10">10 轮</option><option value="40">40 轮</option><option value="80">80 轮</option></select><button id="trainApplioButton" type="button">准备并训练</button><span class="muted">会自动准备数据集</span></div>
+      <div class="step-card">4. 一键训练<select id="applioEpochs"><option value="10">10 轮</option><option value="40">40 轮</option><option value="80">80 轮</option><option value="120">120 轮</option></select><button id="trainApplioButton" type="button">准备并训练</button><span class="muted">会自动准备数据集</span></div>
       <div class="step-card wide">训练状态<div id="applioTrainMessage" class="message">模型已保存后可回工作台生成歌曲</div></div>
     </div>
   </section>`,
