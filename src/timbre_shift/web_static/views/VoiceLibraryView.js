@@ -30,7 +30,7 @@ export const VoiceLibraryView = {
       qs('#voiceProfile').value = state.selectedVoiceId;
       if (button.classList.contains('voice-train')) {
         setSelectedEngine('rvc_applio');
-        navigate('training');
+        navigate('dashboard');
       } else {
         navigate('dashboard');
       }

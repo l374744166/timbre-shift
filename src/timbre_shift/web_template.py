@@ -57,7 +57,6 @@ def page_html() -> str:
       <button class="nav-item" data-view="tts" type="button">文字朗读</button>
       <button class="nav-item" data-view="voices" type="button">音色库</button>
       <button class="nav-item" data-view="songs" type="button">歌曲库</button>
-      <button class="nav-item" data-view="training" type="button">RVC 训练</button>
       <button class="nav-item" data-view="history" type="button">生成历史</button>
       <button class="nav-item" data-view="environment" type="button">环境检查</button>
       <button class="nav-item" data-view="settings" type="button">设置</button>

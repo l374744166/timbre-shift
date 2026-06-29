@@ -61,4 +61,4 @@
 .section-head-row {display:grid}
 }
 
-.voice-upload-strip {grid-template-columns:1fr 180px 190px auto auto}
+.voice-upload-strip {grid-template-columns:1fr 180px 190px auto auto auto}

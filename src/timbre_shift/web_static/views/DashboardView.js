@@ -72,12 +72,24 @@ function scoreItems(items) {
 function rvcTrainingPanel() {
   if (!isRvc()) return '';
   return `<section class="step-section rvc-inline-panel" id="rvcInlinePanel">
-    <div class="section-head-row"><div><h3>RVC 训练和模型</h3><p class="muted">选中音色后，这里直接看素材、模型和训练状态，不用跳来跳去。</p></div><button class="secondary" id="openTrainingPageButton" type="button">打开完整训练页</button></div>
+    <div class="section-head-row"><div><h3>RVC 训练和模型</h3><p class="muted">创建音色库、添加训练素材、训练模型分开显示；训练前会弹窗确认轮数。</p></div></div>
     <div class="train-flow">
       <div class="step-card wide"><strong>训练素材</strong><div id="dashboardSampleList" class="sample-list">先选择一个 RVC 音色库</div></div>
       <div class="step-card wide"><strong>已训练模型</strong><div id="dashboardModelList" class="sample-list">先选择一个 RVC 音色库</div></div>
-      <div class="step-card"><strong>一键训练</strong><select id="dashboardApplioEpochs"><option value="10">10 轮</option><option value="40">40 轮</option><option value="80">80 轮</option></select><button id="dashboardTrainApplioButton" type="button">准备并训练</button><span class="muted">会自动准备数据集</span></div>
-      <div class="step-card wide"><strong>训练状态</strong><div id="dashboardTrainMessage" class="message">选择音色后可直接训练；生成时会自动使用可用模型，也可以手动选择模型。</div></div>
+      <div class="step-card"><strong>训练模型</strong><button id="dashboardTrainApplioButton" type="button">打开训练设置</button><span class="muted">选择轮数后再开始</span></div>
+      <div class="step-card wide"><strong>训练状态</strong><div id="dashboardTrainMessage" class="message">选择音色后可训练模型；生成时会自动使用可用模型，也可以手动选择模型。</div></div>
+    </div>
+    <div class="modal hidden" id="rvcTrainModal" role="dialog" aria-modal="true" aria-labelledby="rvcTrainModalTitle">
+      <div class="modal-panel">
+        <div class="modal-head"><div><h3 id="rvcTrainModalTitle">RVC 训练设置</h3><p class="muted" id="rvcTrainModalSubtitle">确认训练轮数后再开始</p></div><button class="secondary modal-close" id="rvcTrainModalClose" type="button">×</button></div>
+        <div class="settings-grid">
+          <label>训练轮数<select id="dashboardApplioEpochs"><option value="10">10 轮 · 快速测试</option><option value="40">40 轮 · 日常推荐</option><option value="80">80 轮 · 更认真训练</option></select></label>
+          <label>当前音色<input id="rvcTrainVoiceName" type="text" readonly value="未选择"></label>
+          <label>训练素材<input id="rvcTrainSampleCount" type="text" readonly value="0 个"></label>
+        </div>
+        <p class="muted" id="rvcTrainModalHint">开始后会自动准备数据集，然后进入训练。你可以离开页面，训练会继续跑。</p>
+        <div class="button-row"><button id="rvcTrainModalStart" type="button">开始训练</button><button class="secondary" id="rvcTrainModalCancel" type="button">取消</button></div>
+      </div>
     </div>
   </section>`;
 }
@@ -130,12 +142,12 @@ function engineCopy() {
       steps: ['RVC模式', '训练音色', '歌曲', '正式生成'],
       badge: 'RVC 正式生成',
       intro: 'RVC 需要先有训练素材和模型，适合长期复用同一个目标音色。',
-      voiceTitle: 'Step 2：选择 RVC 音色库 / 已训练模型',
-      voiceHelp: '这里选的是要训练或已经训练过的音色库，不是临时参考音频。',
+      voiceTitle: 'Step 2：创建或选择 RVC 音色库',
+      voiceHelp: '创建 RVC 音色库只是建一个空库，不会训练；训练素材和模型训练在下面单独操作。',
       voiceNamePlaceholder: 'RVC 音色库名称',
       sourceLabel: '训练素材类型',
-      saveButton: '创建 RVC 音色库',
-      addButton: '添加训练素材',
+      saveButton: '创建空音色库',
+      addButton: '只添加素材',
       songHelp: 'RVC 会把歌曲人声换成已训练音色，建议源歌人声越干净越好。',
       goalLabel: 'RVC 生成目标',
       styleLabel: 'RVC 人声修饰',
@@ -199,7 +211,7 @@ export const DashboardView = {
       <label class="choice-card ${state.selectedEngine === 'rvc_applio' ? 'selected' : ''}"><input type="radio" name="engine_id" value="rvc_applio" ${state.selectedEngine === 'rvc_applio' ? 'checked' : ''}><strong>Applio RVC 正式生成</strong><span>先训练目标音色模型，适合多首歌长期复用</span></label>
     </div></section>
     <section class="step-section"><h3>${copy.voiceTitle}</h3><p class="muted">${copy.voiceHelp}</p><div class="resource-grid" id="voiceCards">${voiceCards()}</div>
-      <div class="${uploadStripClass}"><input id="voice" name="voice" type="file" accept="audio/*" multiple><input id="voiceName" name="voice_name" placeholder="${copy.voiceNamePlaceholder}">${voiceSourceControl}<button class="secondary" id="saveVoiceButton" type="button">${copy.saveButton}</button><button class="secondary" id="addVoiceSampleButton" type="button">${copy.addButton}</button>${isRvc() ? '<button id="addVoiceSampleAndTrainButton" type="button">添加素材并训练</button>' : ''}</div><div class="message" id="voiceSaveMessage"></div></section>
+      <div class="${uploadStripClass}"><input id="voice" name="voice" type="file" accept="audio/*" multiple><input id="voiceName" name="voice_name" placeholder="${copy.voiceNamePlaceholder}">${voiceSourceControl}<button class="secondary" id="saveVoiceButton" type="button">${copy.saveButton}</button><button class="secondary" id="addVoiceSampleButton" type="button">${copy.addButton}</button>${isRvc() ? '<button id="addVoiceSampleAndTrainButton" type="button">添加素材并打开训练设置</button>' : ''}</div><div class="message" id="voiceSaveMessage"></div></section>
     ${rvcTrainingPanel()}
     <section class="step-section"><h3>Step 3：选择歌曲</h3><p class="muted">${copy.songHelp}</p><div class="resource-grid" id="songCards">${songCards()}</div><div class="upload-strip"><input id="song" name="song" type="file" accept="audio/*"><span class="muted">也可以上传干净人声，高级设置里选择源人声清理。</span></div></section>
     <section class="step-section"><h3>Step 4：生成设置</h3><div class="settings-grid">
@@ -270,6 +282,30 @@ export const DashboardView = {
       if (!message) return;
       message.className = `message${isError ? ' error' : ''}`;
       message.textContent = text;
+    };
+    let pendingTrainAfterAdd = false;
+    const selectedVoiceName = () => {
+      const option = qs('#voiceProfile')?.querySelector(`option[value="${CSS.escape(state.selectedVoiceId)}"]`);
+      return option?.textContent?.trim() || '未选择';
+    };
+    const selectedSampleCount = () => {
+      const option = qs('#voiceProfile')?.querySelector(`option[value="${CSS.escape(state.selectedVoiceId)}"]`);
+      return Number(option?.dataset.sampleCount || 0);
+    };
+    const openRvcTrainModal = ({ afterAdd = false } = {}) => {
+      if (!state.selectedVoiceId) {
+        setDashboardMessage('先选择或创建一个 RVC 音色库', true);
+        return;
+      }
+      pendingTrainAfterAdd = Boolean(afterAdd);
+      qs('#rvcTrainVoiceName') && (qs('#rvcTrainVoiceName').value = selectedVoiceName());
+      qs('#rvcTrainSampleCount') && (qs('#rvcTrainSampleCount').value = afterAdd ? '会先添加当前上传素材' : `${selectedSampleCount()} 个`);
+      qs('#rvcTrainModalSubtitle') && (qs('#rvcTrainModalSubtitle').textContent = afterAdd ? '会先添加当前上传素材，再按所选轮数训练' : '确认训练轮数后再开始');
+      qs('#rvcTrainModal')?.classList.remove('hidden');
+    };
+    const closeRvcTrainModal = () => {
+      pendingTrainAfterAdd = false;
+      qs('#rvcTrainModal')?.classList.add('hidden');
     };
     const loadRvcTrainingDetails = async () => {
       if (!isRvc() || !qs('#rvcInlinePanel')) return;
@@ -349,18 +385,18 @@ export const DashboardView = {
         return false;
       }
     };
-    const trainSelectedRvc = async ({ prefix = '正在准备数据集并训练...' } = {}) => {
+    const trainSelectedRvc = async ({ epochs = '10', prefix = '正在准备数据集并训练...' } = {}) => {
       if (!state.selectedVoiceId) {
         setDashboardMessage('先选择一个 RVC 音色库', true);
         return null;
       }
       const body = new FormData();
       body.append('voice_profile_id', state.selectedVoiceId);
-      body.append('epochs', qs('#dashboardApplioEpochs').value);
+      body.append('epochs', epochs);
       setDashboardMessage(prefix);
       try {
         const data = await api.post('/api/applio-train', body);
-        setDashboardMessage(`${data.message || '模型已保存'} · ${qs('#dashboardApplioEpochs').value} 轮 · 用时 ${formatSeconds(data.training_seconds)}`);
+        setDashboardMessage(`${data.message || '模型已保存'} · ${epochs} 轮 · 用时 ${formatSeconds(data.training_seconds)}`);
         if (data.id) {
           state.selectedVoiceModelId = data.id;
           qs('#voiceModel').value = data.id;
@@ -373,9 +409,23 @@ export const DashboardView = {
       }
     };
     qs('#addVoiceSampleButton')?.addEventListener('click', async () => { await addVoiceSample(); });
-    qs('#addVoiceSampleAndTrainButton')?.addEventListener('click', async () => { const added = await addVoiceSample({ trainAfter: true }); if (added) await trainSelectedRvc({ prefix: `素材已添加，正在准备数据集并训练 ${qs('#dashboardApplioEpochs').value} 轮...` }); });
-    qs('#openTrainingPageButton')?.addEventListener('click', () => navigate('training'));
-    qs('#dashboardTrainApplioButton')?.addEventListener('click', async () => { await trainSelectedRvc(); });
+    qs('#addVoiceSampleAndTrainButton')?.addEventListener('click', () => { if (!qs('#voice')?.files?.length) { qs('#voiceSaveMessage').textContent = '请先选择要添加的训练素材'; return; } openRvcTrainModal({ afterAdd: true }); });
+    qs('#dashboardTrainApplioButton')?.addEventListener('click', () => openRvcTrainModal());
+    qs('#rvcTrainModalClose')?.addEventListener('click', closeRvcTrainModal);
+    qs('#rvcTrainModalCancel')?.addEventListener('click', closeRvcTrainModal);
+    qs('#rvcTrainModal')?.addEventListener('click', (event) => { if (event.target.id === 'rvcTrainModal') closeRvcTrainModal(); });
+    qs('#rvcTrainModalStart')?.addEventListener('click', async () => {
+      const epochs = qs('#dashboardApplioEpochs')?.value || '10';
+      const shouldAddSampleFirst = pendingTrainAfterAdd;
+      closeRvcTrainModal();
+      if (shouldAddSampleFirst) {
+        const added = await addVoiceSample({ trainAfter: true });
+        if (!added) return;
+        await trainSelectedRvc({ epochs, prefix: `素材已添加，正在准备数据集并训练 ${epochs} 轮...` });
+        return;
+      }
+      await trainSelectedRvc({ epochs, prefix: `正在准备数据集并训练 ${epochs} 轮...` });
+    });
     qs('#dashboardSampleList')?.addEventListener('click', async (event) => { const button = event.target.closest('.sample-delete'); if (!button) return; if (!window.confirm('确定删除这个训练素材吗？')) return; const body = new FormData(); body.append('voice_profile_id', state.selectedVoiceId); body.append('sample_id', button.dataset.id || ''); setDashboardMessage('正在删除素材...'); try { const data = await api.post('/api/delete-voice-sample', body); setDashboardMessage(data.message || '素材已删除'); updateSelectedVoiceStats({ sampleCount: data.sample_count }); await loadRvcTrainingDetails(); } catch (error) { setDashboardMessage(error.message, true); } });
     qs('#dashboardModelList')?.addEventListener('click', async (event) => { const pick = event.target.closest('.model-pick'); const del = event.target.closest('.model-delete'); if (pick) { state.selectedVoiceModelId = pick.dataset.id || ''; qs('#voiceModel').value = state.selectedVoiceModelId; setDashboardMessage('已选择这个 RVC 模型用于生成'); await loadRvcTrainingDetails(); return; } if (!del) return; if (!window.confirm('确定删除这个 RVC 模型吗？')) return; const body = new FormData(); body.append('voice_model_id', del.dataset.id || ''); setDashboardMessage('正在删除模型...'); try { const data = await api.post('/api/delete-voice-model', body); if (state.selectedVoiceModelId === data.id) { state.selectedVoiceModelId = ''; qs('#voiceModel').value = ''; } setDashboardMessage(data.message || '模型已删除'); await loadRvcTrainingDetails(); } catch (error) { setDashboardMessage(error.message, true); } });
     qs('#savePreferenceButton')?.addEventListener('click', async () => { const body = new FormData(qs('#form')); body.set('engine_id', state.selectedEngine); body.set('voice_profile_id', state.selectedVoiceId); qs('#message').textContent = '正在保存默认参数...'; try { const data = await api.post('/api/voice-preference', body); qs('#message').textContent = data.message || '已保存默认参数'; } catch (error) { qs('#message').textContent = error.message; } });

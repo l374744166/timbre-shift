@@ -19,7 +19,7 @@ def test_ui_uses_product_workstation_shell_and_module_assets():
 
     assert "本地 AI 音色转换工作台" in html
     assert 'data-view="dashboard"' in html
-    assert 'data-view="training"' in html
+    assert 'data-view="training"' not in html
     assert 'id="viewRoot"' in html
     assert 'id="envStatus"' in html
     assert 'id="seedvcStatus"' in html
@@ -41,6 +41,9 @@ def test_ui_uses_product_workstation_shell_and_module_assets():
     assert "咬字增强" in dashboard_js
     assert "音色记忆库" in dashboard_js
     assert "混音风格" in dashboard_js
+    assert "RVC 训练设置" in dashboard_js
+    assert "打开训练设置" in dashboard_js
+    assert "添加素材并打开训练设置" in dashboard_js
     assert "scorecard" in result_js
     assert "干声人声" in result_js
     assert "downloadDryVocal" in result_js
