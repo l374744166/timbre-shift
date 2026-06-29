@@ -1,4 +1,5 @@
 import unittest
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -107,12 +108,9 @@ def test_train_progress_reports_saved_epoch_without_jumping_to_98_percent():
         wavs = dataset / "wavs"
         wavs.mkdir(parents=True)
         (wavs / "sample.wav").write_bytes(b"wav")
-        logs = applio_dir / "logs" / "ts_voice_test"
-        logs.mkdir(parents=True)
-        model_file = logs / "ts_voice_test_12e_1860s_best_epoch.pth"
-        index_file = logs / "ts_voice_test.index"
         check = ApplioCheck(True, applio_dir, applio_dir / "python", [])
         progress_calls = []
+        created_model_paths = []
 
         profile = VoiceProfile(
             id="voice-test",
@@ -136,13 +134,21 @@ def test_train_progress_reports_saved_epoch_without_jumping_to_98_percent():
             updated_at="now",
         )
 
-        def fake_run(_root, _code, on_output=None):
+        def fake_run(_root, code, on_output=None):
+            match = re.search(r"run_train_script\('([^']+)'", code)
+            assert match, code
+            model_name = match.group(1)
+            logs = applio_dir / "logs" / model_name
+            logs.mkdir(parents=True)
+            model_file = logs / f"{model_name}_12e_1860s_best_epoch.pth"
+            index_file = logs / f"{model_name}.index"
             if on_output:
-                on_output("Saved model ts_voice_test_12e_1860s_best_epoch.pth")
+                on_output(f"Saved model {model_file.name}")
             model_file.write_bytes(b"model")
             index_file.write_bytes(b"index")
 
         def fake_create_voice_model_record(**kwargs):
+            created_model_paths.append(str(kwargs["model_path"]))
             return VoiceModel(
                 id="model-test",
                 voice_id=kwargs["voice_id"],
@@ -179,3 +185,5 @@ def test_train_progress_reports_saved_epoch_without_jumping_to_98_percent():
         assert saved_updates[-1][1] < 98
         assert saved_updates[-1][2]["current_epoch"] == 12
         assert saved_updates[-1][2]["total_epochs"] == 80
+        assert created_model_paths
+        assert "_80e_" in created_model_paths[-1]

@@ -55,21 +55,24 @@ def train_applio_model(
     if not check.available:
         raise RuntimeError(f"Applio RVC 未安装或未配置：{', '.join(check.missing)}")
 
+    run_started_at = time.time()
+    run_stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime(run_started_at))
+    model_name = f"ts_{voice_id.replace('-', '_')}_{epochs}e_{run_stamp}"
+
     if progress:
-        progress("准备 Applio RVC 数据集", 5, {"task_type": "rvc_training", "stage": "准备数据集", "current_epoch": 0, "total_epochs": epochs})
+        progress("准备 Applio RVC 数据集", 5, {"task_type": "rvc_training", "stage": "准备数据集", "current_epoch": 0, "total_epochs": epochs, "model_name": model_name})
     dataset = prepare_applio_dataset(
         voice_id,
         library_dir=library_dir,
         db_path=db_path,
         sample_rate=44100,
     )
-    model_name = f"ts_{voice_id.replace('-', '_')}"
     applio_dataset = _copy_dataset_to_applio(dataset.dataset_path, model_name, root)
 
     start = time.perf_counter()
-    wall_start = time.time()
+    wall_start = run_started_at
     if progress:
-        progress("检查 Applio RVC 训练资源", 10, {"task_type": "rvc_training", "stage": "检查训练资源", "current_epoch": 0, "total_epochs": epochs})
+        progress("检查 Applio RVC 训练资源", 10, {"task_type": "rvc_training", "stage": "检查训练资源", "current_epoch": 0, "total_epochs": epochs, "model_name": model_name})
 
     latest_epoch = 0
 
@@ -193,7 +196,8 @@ ensure_step_ok(msg, "训练")
         )
     index_candidates = sorted(logs_dir.glob("*.index"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not model_candidates:
-        raise FileNotFoundError(f"Applio RVC 训练完成但没有找到模型：{logs_dir}")
+        existing = ", ".join(path.name for path in sorted(logs_dir.glob("*.pth"))[:8]) if logs_dir.exists() else "目录不存在"
+        raise FileNotFoundError(f"Applio RVC 训练完成但没有找到本次新模型：{logs_dir}；现有文件：{existing or '无'}")
     model_path = model_candidates[0]
     index_path = index_candidates[0] if index_candidates else None
 
@@ -209,6 +213,7 @@ ensure_step_ok(msg, "训练")
         metadata={
             "applio_dir": str(root),
             "applio_model_name": model_name,
+            "applio_base_voice_id": voice_id,
             "sample_rate": sample_rate,
             "epochs": epochs,
             "batch_size": batch_size,
