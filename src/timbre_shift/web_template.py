@@ -41,9 +41,12 @@ def page_html() -> str:
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div>
-        <h1>Timbre Shift</h1>
-        <p>本地 AI 音色转换工作台</p>
+      <div class="brand-block">
+        <div class="brand-mark">TS</div>
+        <div>
+          <h1>Timbre Shift</h1>
+          <p>本地 AI 音色转换工作台</p>
+        </div>
       </div>
       <div class="topbar-status">
         <span class="status-pill" id="envStatus">检查环境中...</span>
@@ -53,13 +56,13 @@ def page_html() -> str:
     </header>
 
     <aside class="sidebar" aria-label="主导航">
-      <button class="nav-item active" data-view="dashboard" type="button">工作台</button>
-      <button class="nav-item" data-view="tts" type="button">文字朗读</button>
-      <button class="nav-item" data-view="voices" type="button">音色库</button>
-      <button class="nav-item" data-view="songs" type="button">歌曲库</button>
-      <button class="nav-item" data-view="history" type="button">生成历史</button>
-      <button class="nav-item" data-view="environment" type="button">环境检查</button>
-      <button class="nav-item" data-view="settings" type="button">设置</button>
+      <button class="nav-item active" data-view="dashboard" type="button">🎛️ 工作台</button>
+      <button class="nav-item" data-view="tts" type="button">🗣️ 文字朗读</button>
+      <button class="nav-item" data-view="voices" type="button">🎙️ 音色库</button>
+      <button class="nav-item" data-view="songs" type="button">🎵 歌曲库</button>
+      <button class="nav-item" data-view="history" type="button">🕘 生成历史</button>
+      <button class="nav-item" data-view="environment" type="button">🧰 环境检查</button>
+      <button class="nav-item" data-view="settings" type="button">⚙️ 设置</button>
     </aside>
 
     <main class="workspace">

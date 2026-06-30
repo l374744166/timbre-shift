@@ -1,31 +1,39 @@
 .resource-grid {display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
   gap:12px;
   margin-top:12px}
 .resource-card {display:grid;
   gap:12px;
   border:1px solid var(--line);
-  border-radius:12px;
-  padding:14px;
-  background:var(--card)}
-.resource-card.selected {border-color:var(--primary);
-  box-shadow:0 0 0 1px rgba(91,140,255,.25)}
-.resource-card h3 {margin:0}
-.resource-card p {margin:3px 0 0;
-  color:var(--muted)}
-.card-meta {display:grid;
-  gap:4px;
+  border-radius:16px;
+  padding:15px;
+  background:#fff;
+  box-shadow:var(--shadow-soft)}
+.resource-card:hover {border-color:var(--line-strong);
+  box-shadow:var(--shadow)}
+.resource-card.selected {border-color:rgba(47,107,255,.7);
+  box-shadow:0 0 0 2px rgba(47,107,255,.13),var(--shadow)}
+.resource-card h3 {margin:0;
+  font-size:17px}
+.resource-card p {margin:5px 0 0;
   color:var(--muted);
-  font-size:13px}
+  line-height:1.45}
+.card-meta {display:grid;
+  gap:5px;
+  color:var(--muted);
+  font-size:13px;
+  border-top:1px solid var(--line);
+  padding-top:10px}
 .train-flow {display:grid;
   grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:12px}
 .step-card {display:grid;
   gap:10px;
   border:1px solid var(--line);
-  border-radius:12px;
-  padding:14px;
-  background:var(--card)}
+  border-radius:16px;
+  padding:15px;
+  background:#fff;
+  box-shadow:var(--shadow-soft)}
 .step-card.wide {grid-column:1/-1}
 .sample-list {display:grid;
   gap:8px}
@@ -34,10 +42,12 @@
   gap:12px;
   align-items:center;
   border:1px solid var(--line);
-  border-radius:8px;
+  border-radius:12px;
   padding:10px;
-  background:var(--card)}
+  background:#fff}
 .sample-row div,.model-row div {display:grid;
   gap:3px}
 .sample-row span,.model-row span {color:var(--muted);
   font-size:13px}
+@media(max-width:700px) {.sample-row,.model-row {display:grid}
+}

@@ -3,19 +3,27 @@
   border:1px solid var(--line);
   border-radius:999px;
   padding:6px 10px;
+  background:#fff;
   color:var(--muted);
-  font-size:13px}
-.status-pill.ok,.status-badge.ok {border-color:rgba(53,199,138,.4);
+  font-size:13px;
+  box-shadow:0 1px 3px rgba(16,24,40,.04)}
+.status-pill.ok,.status-badge.ok {border-color:rgba(22,138,94,.25);
+  background:#F0FBF6;
   color:var(--ok)}
-.status-pill.warn,.status-badge.warn {border-color:rgba(244,183,64,.5);
+.status-pill.warn,.status-badge.warn {border-color:rgba(183,121,31,.28);
+  background:#FFF8E8;
   color:var(--warn)}
 .progress-card {display:grid;
-  gap:10px}
+  gap:10px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px;
+  background:var(--soft)}
 .progress-meta {display:flex;
   justify-content:space-between;
   color:var(--muted);
   font-size:13px}
-.progress-track {height:8px;
+.progress-track {height:10px;
   background:#E7ECF3;
   border-radius:999px;
   overflow:hidden}
@@ -24,43 +32,50 @@
   background:linear-gradient(90deg,var(--primary),var(--primary-2))}
 .full {width:100%}
 .mini-list {display:grid;
-  gap:8px}
+  gap:10px}
 .mini-item {display:grid;
-  gap:3px;
-  padding:9px;
+  gap:4px;
+  padding:12px;
   border:1px solid var(--line);
-  border-radius:8px;
-  background:var(--card);
+  border-radius:12px;
+  background:#fff;
   color:inherit;
   text-align:left;
-  text-decoration:none}
-.mini-item:hover {border-color:var(--primary)}
+  text-decoration:none;
+  box-shadow:none}
+.mini-item:hover {border-color:var(--primary);
+  background:var(--primary-soft)}
 .mini-item span {color:var(--muted);
   font-size:12px}
 .toolbar {display:flex;
   gap:10px;
   margin:14px 0}
-.empty-state {border:1px dashed var(--line);
-  border-radius:12px;
+.empty-state {border:1px dashed var(--line-strong);
+  border-radius:14px;
   padding:24px;
   color:var(--muted);
-  text-align:center}
+  text-align:center;
+  background:var(--soft)}
 .details-panel {border:1px solid var(--line);
-  border-radius:10px;
-  padding:12px;
-  background:#F8FAFD}
+  border-radius:14px;
+  padding:13px 14px;
+  background:var(--soft)}
+.details-panel summary {cursor:pointer;
+  font-weight:800}
 .message {color:var(--muted);
   min-height:22px}
+.message.error {color:var(--error)}
 .button-row,.card-actions {display:flex;
   gap:8px;
   flex-wrap:wrap}
+.card-actions button {min-height:34px;
+  padding:0 12px}
 .sample-row {display:flex;
   justify-content:space-between;
   border:1px solid var(--line);
-  border-radius:8px;
-  padding:8px;
+  border-radius:10px;
+  padding:9px;
   background:var(--card)}
-
 .modal {position:fixed;
   inset:0;
   z-index:50;
@@ -75,11 +90,11 @@
   overflow:auto;
   display:grid;
   gap:14px;
-  padding:18px;
+  padding:20px;
   border:1px solid var(--line);
-  border-radius:14px;
+  border-radius:18px;
   background:var(--panel);
-  box-shadow:0 20px 60px rgba(23,32,38,.22)}
+  box-shadow:0 24px 70px rgba(23,32,38,.22)}
 .modal-head {display:flex;
   align-items:flex-start;
   justify-content:space-between;
@@ -89,14 +104,13 @@
 .modal-close {min-width:38px;
   padding:0;
   font-size:20px}
-
 .progress-details {display:grid;
   grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
   gap:8px;
   margin-top:8px}
 .progress-detail-item {border:1px solid var(--line);
-  border-radius:8px;
-  padding:8px;
+  border-radius:10px;
+  padding:9px;
   background:var(--panel)}
 .progress-detail-item span {display:block;
   color:var(--muted);

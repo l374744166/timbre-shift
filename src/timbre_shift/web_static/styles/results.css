@@ -2,9 +2,11 @@
   gap:14px;
   margin-top:16px}
 .result-hero,.player-card,.variant-card {border:1px solid var(--line);
-  border-radius:12px;
-  padding:14px;
-  background:var(--card)}
+  border-radius:16px;
+  padding:16px;
+  background:#fff;
+  box-shadow:var(--shadow-soft)}
+.result-hero {background:linear-gradient(180deg,#fff,#F7FAFF)}
 .result-hero h2 {margin:0 0 4px}
 .result-hero p {margin:0 0 12px;
   color:var(--muted)}
@@ -14,9 +16,9 @@
 .result-fact {display:grid;
   gap:3px;
   border:1px solid var(--line);
-  border-radius:10px;
-  padding:9px;
-  background:var(--panel)}
+  border-radius:12px;
+  padding:10px;
+  background:#fff}
 .result-fact span {color:var(--muted);
   font-size:12px}
 .result-fact strong {font-size:14px}
@@ -29,9 +31,9 @@
   grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:10px}
 .score-item {border:1px solid var(--line);
-  border-radius:10px;
-  padding:10px;
-  background:var(--panel);
+  border-radius:12px;
+  padding:11px;
+  background:#fff;
   display:grid;
   gap:4px}
 .score-item b {color:var(--primary)}
@@ -40,9 +42,9 @@
   gap:8px}
 .result-notice {display:grid;
   gap:3px;
-  border:1px solid rgba(183,121,31,.35);
-  border-radius:10px;
-  padding:10px;
+  border:1px solid rgba(183,121,31,.28);
+  border-radius:12px;
+  padding:11px;
   background:#FFF9ED}
 .result-notice span {color:var(--muted)}
 .variant-grid {display:grid;
@@ -55,9 +57,10 @@
   gap:10px;
   align-items:center;
   border:1px solid var(--line);
-  border-radius:10px;
-  padding:10px;
-  background:var(--card)}
+  border-radius:14px;
+  padding:12px;
+  background:#fff;
+  box-shadow:var(--shadow-soft)}
 .metrics {font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   color:var(--muted);
   font-size:12px}
