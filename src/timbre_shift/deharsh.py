@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .commands import as_strs, run_command
 
-VALID_DEHARSH_MODES = {"off", "light", "medium", "strong"}
+VALID_DEHARSH_MODES = {"off", "light", "medium", "strong", "rescue"}
 
 
 def deharsh_converted_vocal(converted_vocal: Path, output: Path, mode: str = "off") -> Path:
@@ -37,6 +37,16 @@ def deharsh_converted_vocal(converted_vocal: Path, output: Path, mode: str = "of
 
 
 def _filters_for_mode(mode: str) -> list[str]:
+    if mode == "rescue":
+        return [
+            "equalizer=f=3000:t=q:w=1.1:g=-1.8",
+            "equalizer=f=4200:t=q:w=1.0:g=-3.0",
+            "equalizer=f=6800:t=q:w=1.0:g=-3.4",
+            "deesser=i=0.58:m=0.70:f=0.45",
+            "lowpass=f=11000",
+            "acompressor=threshold=-22dB:ratio=2.2:attack=6:release=100:makeup=1.0",
+            "alimiter=limit=0.90",
+        ]
     if mode == "strong":
         return [
             "equalizer=f=3500:t=q:w=1.0:g=-2.0",

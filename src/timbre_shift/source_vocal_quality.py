@@ -48,7 +48,15 @@ def analyze_source_vocal_quality(
     problem_segments = [item for item in segments if item["risk_level"] in {"warning", "bad"}]
     worst_rank = max((_risk_rank(item["risk_level"]) for item in segments), default=0)
     source_quality_score = _quality_score(overall, problem_segments, len(segments))
-    summary = "良好" if worst_rank == 0 else ("一般" if worst_rank == 1 else "高潮段有风险")
+    has_clipping = bool(overall["clipping_score"] >= 0.01 or overall["peak"] >= 0.98)
+    high_freq_risk = bool(overall["high_freq_ratio"] >= 0.22 or any(s["high_freq_ratio"] >= 0.28 for s in segments))
+    harshness_risk = bool(overall["harshness_score"] >= 0.55 or any(s["harshness_score"] >= 0.65 for s in segments))
+    if worst_rank >= 2 or has_clipping or (high_freq_risk and harshness_risk):
+        summary = "高潮段有风险"
+    elif worst_rank == 1 or high_freq_risk or harshness_risk or source_quality_score < 80:
+        summary = "一般"
+    else:
+        summary = "良好"
     result: dict[str, Any] = {
         **overall,
         "duration_seconds": round(len(samples) / sample_rate, 3),
@@ -57,9 +65,9 @@ def analyze_source_vocal_quality(
         "problem_segments": problem_segments,
         "source_quality_score": source_quality_score,
         "source_problem_segment_count": len(problem_segments),
-        "source_has_clipping": bool(overall["clipping_score"] >= 0.01 or overall["peak"] >= 0.98),
-        "source_high_freq_risk": bool(overall["high_freq_ratio"] >= 0.22 or any(s["high_freq_ratio"] >= 0.28 for s in segments)),
-        "source_harshness_risk": bool(overall["harshness_score"] >= 0.55 or any(s["harshness_score"] >= 0.65 for s in segments)),
+        "source_has_clipping": has_clipping,
+        "source_high_freq_risk": high_freq_risk,
+        "source_harshness_risk": harshness_risk,
         "source_quality_summary": summary,
     }
     if output_json:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .commands import as_strs, run_command
 
-VALID_REPAIR_MODES = {"off", "standard", "ai_generated", "deharsh_strong", "strong"}
+VALID_REPAIR_MODES = {"off", "standard", "ai_generated", "deharsh_strong", "noise_tolerant", "strong"}
 
 
 def repair_source_vocal_before_rvc(
@@ -46,6 +46,19 @@ def repair_source_vocal_before_rvc(
 
 
 def _filters_for_mode(mode: str) -> list[str]:
+    if mode == "noise_tolerant":
+        return [
+            "highpass=f=90",
+            "afftdn=nf=-35",
+            "equalizer=f=3000:t=q:w=1.1:g=-2.0",
+            "equalizer=f=4300:t=q:w=1.0:g=-3.0",
+            "equalizer=f=7200:t=q:w=1.0:g=-3.2",
+            "deesser=i=0.55:m=0.68:f=0.45",
+            "lowpass=f=11500",
+            "acompressor=threshold=-24dB:ratio=2.6:attack=8:release=120:makeup=1.1",
+            "alimiter=limit=0.90",
+            "loudnorm=I=-19:TP=-1.6:LRA=9",
+        ]
     if mode == "deharsh_strong":
         return [
             "highpass=f=80",

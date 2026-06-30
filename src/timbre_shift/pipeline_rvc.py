@@ -119,11 +119,15 @@ def _render_ai_source_repair_variant(
     converted_dir: Path,
     output_dir: Path,
     mix_style_id: str = "natural",
+    variant_id: str = "ai_source_repair",
+    name: str = "AI 源修复版",
+    description: str = "针对源人声高频沙哑、AI 毛刺和高潮段刺耳问题做了预清理和去刺处理。",
+    deharsh_mode: str = "medium",
+    repair_mode: str = "ai_generated",
 ) -> dict[str, object]:
     variants_dir = output_dir / "variants"
     variants_dir.mkdir(parents=True, exist_ok=True)
     mix_style = get_mix_style(mix_style_id)
-    variant_id = "ai_source_repair"
     processed, post_metrics = _postprocess_rvc_vocal(
         converted_vocal=repaired_vocal,
         source_vocal=source_vocal,
@@ -131,7 +135,7 @@ def _render_ai_source_repair_variant(
         diction_mode="light",
         vocal_style="neutral",
         consonant_blend=None,
-        deharsh_mode="medium",
+        deharsh_mode=deharsh_mode,
     )
     wav_output = variants_dir / f"{variant_id}.wav"
     if backing_track is None:
@@ -148,14 +152,14 @@ def _render_ai_source_repair_variant(
     mp3_output = export_mp3(wav_output, variants_dir / f"{variant_id}.mp3")
     return {
         "id": variant_id,
-        "name": "AI 源修复版",
-        "description": "针对源人声高频沙哑、AI 毛刺和高潮段刺耳问题做了预清理和去刺处理。",
+        "name": name,
+        "description": description,
         "wav": str(wav_output),
         "mp3": str(mp3_output),
         "diction_mode": "light",
         "consonant_blend": post_metrics["consonant_blend"],
         "vocal_style": "neutral",
         "mix_style": mix_style.id,
-        "pre_rvc_repair_mode": "ai_generated",
-        "deharsh_mode": "medium",
+        "pre_rvc_repair_mode": repair_mode,
+        "deharsh_mode": deharsh_mode,
     }

@@ -104,4 +104,5 @@ def test_warning_source_adds_ai_source_repair_variant(monkeypatch):
 
         metrics = (root / "out" / "metrics.json").read_text(encoding="utf-8")
         assert "ai_source_repair" in metrics
-        assert fake_engine.calls >= 2
+        assert "noise_tolerant_rescue" in metrics
+        assert fake_engine.calls >= 3

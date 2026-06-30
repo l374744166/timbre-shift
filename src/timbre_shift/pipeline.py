@@ -452,7 +452,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
 
     conversion_source_vocal = source_vocal
     if engine.requires_training:
-        cleanup_mode = options.pre_rvc_cleanup_mode if options.pre_rvc_cleanup_mode in {"off", "standard", "strong", "ai_generated", "deharsh_strong"} else "off"
+        cleanup_mode = options.pre_rvc_cleanup_mode if options.pre_rvc_cleanup_mode in {"off", "standard", "strong", "ai_generated", "deharsh_strong", "noise_tolerant"} else "off"
         metrics["pre_rvc_cleanup_mode"] = cleanup_mode
         metrics["pre_rvc_repair_mode"] = cleanup_mode
         if cleanup_mode != "off":
@@ -602,7 +602,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             diction_mode=requested_diction_mode,
             vocal_style=requested_vocal_style,
             consonant_blend=rvc_preset.consonant_blend,
-            deharsh_mode=options.deharsh_mode if options.deharsh_mode in {"off", "light", "medium", "strong"} else "off",
+            deharsh_mode=options.deharsh_mode if options.deharsh_mode in {"off", "light", "medium", "strong", "rescue"} else "off",
         )
         metrics.update(rvc_post_metrics)
         metrics["polished_vocal_wav"] = str(converted_vocal)
@@ -626,6 +626,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                 or metrics["source_high_freq_risk"]
                 or metrics["source_harshness_risk"]
                 or metrics["source_has_clipping"]
+                or (isinstance(metrics.get("converted_harshness_score"), (int, float)) and float(metrics["converted_harshness_score"]) >= 0.72)
             )
             if source_risky and "voice_model" in locals() and "rvc_convert_options" in locals():
                 try:
@@ -651,6 +652,33 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                             converted_dir=converted_dir,
                             output_dir=options.output_dir,
                             mix_style_id=mix_style.id,
+                        )
+                    )
+                    repaired_source_rescue = repair_source_vocal_before_rvc(
+                        source_vocal,
+                        converted_dir / "pre_rvc_repair" / "source_vocal_noise_tolerant_variant.wav",
+                        mode="noise_tolerant",
+                        problem_segments=metrics["source_problem_segments"] if isinstance(metrics["source_problem_segments"], list) else None,
+                    )
+                    rescue_result = engine.convert(
+                        source_vocal=repaired_source_rescue,
+                        target_voice_or_model=Path(voice_model.model_path),
+                        output_dir=converted_dir / options.engine_id / "noise_tolerant",
+                        options=rvc_convert_options,
+                    )
+                    variants.append(
+                        _render_ai_source_repair_variant(
+                            repaired_vocal=rescue_result.converted_vocal_path,
+                            source_vocal=diagnostic_source_vocal,
+                            backing_track=backing_track,
+                            converted_dir=converted_dir,
+                            output_dir=options.output_dir,
+                            mix_style_id=mix_style.id,
+                            variant_id="noise_tolerant_rescue",
+                            name="噪音歌保底版",
+                            description="更强压制沙哑、毛刺和刺耳高频；可能更暗，但优先保证不炸不刺。",
+                            deharsh_mode="rescue",
+                            repair_mode="noise_tolerant",
                         )
                     )
                     metrics["auto_repair_variant_generated"] = True

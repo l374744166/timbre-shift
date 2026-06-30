@@ -51,4 +51,5 @@ def test_high_frequency_noise_is_warning_or_bad():
 
         assert result["source_problem_segment_count"] > 0
         assert result["source_quality_summary"] in {"一般", "高潮段有风险"}
+        assert result["source_quality_summary"] != "良好"
         assert result["source_high_freq_risk"] or result["source_harshness_risk"]
