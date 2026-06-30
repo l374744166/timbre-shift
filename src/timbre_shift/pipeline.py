@@ -42,8 +42,10 @@ from .pipeline_config import (
     seedvc_chunk_settings,
 )
 from .rvc_presets import get_rvc_preset
+from .source_vocal_quality import analyze_source_vocal_quality
 from .pre_rvc_cleanup import preprocess_source_vocal_for_rvc
-from .pipeline_rvc import _postprocess_rvc_vocal, _render_rvc_variants
+from .pre_rvc_repair import repair_source_vocal_before_rvc
+from .pipeline_rvc import _postprocess_rvc_vocal, _render_ai_source_repair_variant, _render_rvc_variants
 from .pipeline_seedvc import _convert_seedvc_chunked, _convert_seedvc_whole
 from .vocal_segments import compact_for_conversion, restore_compact_vocals
 
@@ -149,6 +151,27 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "pre_rvc_cleanup_mode": options.pre_rvc_cleanup_mode,
         "pre_rvc_cleanup_seconds": 0.0,
         "pre_rvc_cleanup_output": None,
+        "source_vocal_quality_enabled": options.source_vocal_quality_enabled,
+        "source_quality_score": None,
+        "source_quality_summary": None,
+        "source_problem_segment_count": 0,
+        "source_problem_segments": [],
+        "source_has_clipping": False,
+        "source_high_freq_risk": False,
+        "source_harshness_risk": False,
+        "source_quality_metrics_path": None,
+        "source_quality_error": None,
+        "pre_rvc_repair_mode": options.pre_rvc_cleanup_mode,
+        "pre_rvc_repair_used": False,
+        "pre_rvc_repair_seconds": 0.0,
+        "pre_rvc_repair_output": None,
+        "problem_segments_repaired": 0,
+        "deharsh_mode": options.deharsh_mode,
+        "deharsh_used": False,
+        "deharsh_seconds": 0.0,
+        "auto_repair_variant_generated": False,
+        "auto_repair_reason": None,
+        "converted_harshness_score": None,
         "mix_style": options.mix_style,
         "vocal_gain": None,
         "backing_gain": None,
@@ -408,20 +431,45 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
     if metrics["active_vocal_seconds"] is None:
         metrics["active_vocal_seconds"] = probe_duration(source_vocal)
 
+    source_quality: dict[str, object] | None = None
+    if options.source_vocal_quality_enabled and options.engine_id == "rvc_applio":
+        update("检测源人声质量", 62)
+        try:
+            source_quality = analyze_source_vocal_quality(
+                source_vocal,
+                options.output_dir / "source_vocal_quality.json",
+            )
+            metrics["source_quality_metrics_path"] = str(options.output_dir / "source_vocal_quality.json")
+            metrics["source_quality_score"] = source_quality.get("source_quality_score")
+            metrics["source_quality_summary"] = source_quality.get("source_quality_summary")
+            metrics["source_problem_segment_count"] = source_quality.get("source_problem_segment_count", 0)
+            metrics["source_problem_segments"] = source_quality.get("problem_segments", [])
+            metrics["source_has_clipping"] = bool(source_quality.get("source_has_clipping"))
+            metrics["source_high_freq_risk"] = bool(source_quality.get("source_high_freq_risk"))
+            metrics["source_harshness_risk"] = bool(source_quality.get("source_harshness_risk"))
+        except Exception as exc:
+            metrics["source_quality_error"] = str(exc)
+
     conversion_source_vocal = source_vocal
     if engine.requires_training:
-        cleanup_mode = options.pre_rvc_cleanup_mode if options.pre_rvc_cleanup_mode in {"off", "standard", "strong"} else "off"
+        cleanup_mode = options.pre_rvc_cleanup_mode if options.pre_rvc_cleanup_mode in {"off", "standard", "strong", "ai_generated", "deharsh_strong"} else "off"
         metrics["pre_rvc_cleanup_mode"] = cleanup_mode
+        metrics["pre_rvc_repair_mode"] = cleanup_mode
         if cleanup_mode != "off":
-            update("清理 RVC 输入人声", 66)
+            update("修复 RVC 输入人声", 66)
             step_start = time.perf_counter()
             conversion_source_vocal = preprocess_source_vocal_for_rvc(
                 source_vocal,
-                converted_dir / "pre_rvc_cleanup" / f"source_vocal_{cleanup_mode}.wav",
+                converted_dir / "pre_rvc_repair" / f"source_vocal_{cleanup_mode}.wav",
                 mode=cleanup_mode,
             )
-            metrics["pre_rvc_cleanup_seconds"] = time.perf_counter() - step_start
+            repair_seconds = time.perf_counter() - step_start
+            metrics["pre_rvc_cleanup_seconds"] = repair_seconds
             metrics["pre_rvc_cleanup_output"] = str(conversion_source_vocal)
+            metrics["pre_rvc_repair_seconds"] = repair_seconds
+            metrics["pre_rvc_repair_used"] = True
+            metrics["pre_rvc_repair_output"] = str(conversion_source_vocal)
+            metrics["problem_segments_repaired"] = metrics["source_problem_segment_count"]
 
     update(f"转换为目标音色（{engine.name}，{cache_label}）", 70)
     if options.engine_id == "seedvc":
@@ -495,20 +543,21 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             metrics["rvc_mlx_dataset_seconds"] = voice_model.dataset_seconds
             metrics["rvc_mlx_index_path"] = voice_model.index_path
             metrics["rvc_mlx_status"] = voice_model.status
+        rvc_convert_options = {
+            "cache_dir": options.cache_dir,
+            "index_path": voice_model.index_path,
+            "voice_model_id": voice_model.id,
+            "index_rate": effective_rvc_index_rate,
+            "protect": rvc_preset.protect,
+            "pitch_shift": rvc_preset.pitch,
+            "f0_method": rvc_preset.f0_method,
+            "clean_audio": rvc_preset.clean_audio,
+        }
         engine_result = engine.convert(
             source_vocal=conversion_source_vocal,
             target_voice_or_model=Path(voice_model.model_path),
             output_dir=converted_dir / options.engine_id,
-            options={
-                "cache_dir": options.cache_dir,
-                "index_path": voice_model.index_path,
-                "voice_model_id": voice_model.id,
-                "index_rate": effective_rvc_index_rate,
-                "protect": rvc_preset.protect,
-                "pitch_shift": rvc_preset.pitch,
-                "f0_method": rvc_preset.f0_method,
-                "clean_audio": rvc_preset.clean_audio,
-            },
+            options=rvc_convert_options,
         )
         converted_vocal = engine_result.converted_vocal_path
         metrics["rvc_index_rate"] = engine_result.metadata.get("index_rate", effective_rvc_index_rate)
@@ -553,12 +602,18 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
             diction_mode=requested_diction_mode,
             vocal_style=requested_vocal_style,
             consonant_blend=rvc_preset.consonant_blend,
+            deharsh_mode=options.deharsh_mode if options.deharsh_mode in {"off", "light", "medium", "strong"} else "off",
         )
         metrics.update(rvc_post_metrics)
         metrics["polished_vocal_wav"] = str(converted_vocal)
+        try:
+            converted_quality = analyze_source_vocal_quality(raw_converted_vocal, segment_seconds=5.0)
+            metrics["converted_harshness_score"] = converted_quality.get("harshness_score")
+        except Exception:
+            pass
         if options.generate_variants:
             update("生成 A/B 对比版本", 91)
-            metrics["variants"] = _render_rvc_variants(
+            variants = _render_rvc_variants(
                 base_vocal=raw_converted_vocal,
                 source_vocal=diagnostic_source_vocal,
                 backing_track=backing_track,
@@ -566,6 +621,44 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                 output_dir=options.output_dir,
                 mix_style_id=mix_style.id,
             )
+            source_risky = bool(
+                metrics["source_problem_segment_count"]
+                or metrics["source_high_freq_risk"]
+                or metrics["source_harshness_risk"]
+                or metrics["source_has_clipping"]
+            )
+            if source_risky and "voice_model" in locals() and "rvc_convert_options" in locals():
+                try:
+                    update("生成 AI 源修复对比版", 91)
+                    step_start = time.perf_counter()
+                    repaired_source = repair_source_vocal_before_rvc(
+                        source_vocal,
+                        converted_dir / "pre_rvc_repair" / "source_vocal_ai_variant.wav",
+                        mode="ai_generated",
+                        problem_segments=metrics["source_problem_segments"] if isinstance(metrics["source_problem_segments"], list) else None,
+                    )
+                    repair_variant_result = engine.convert(
+                        source_vocal=repaired_source,
+                        target_voice_or_model=Path(voice_model.model_path),
+                        output_dir=converted_dir / options.engine_id / "ai_source_repair",
+                        options=rvc_convert_options,
+                    )
+                    variants.append(
+                        _render_ai_source_repair_variant(
+                            repaired_vocal=repair_variant_result.converted_vocal_path,
+                            source_vocal=diagnostic_source_vocal,
+                            backing_track=backing_track,
+                            converted_dir=converted_dir,
+                            output_dir=options.output_dir,
+                            mix_style_id=mix_style.id,
+                        )
+                    )
+                    metrics["auto_repair_variant_generated"] = True
+                    metrics["auto_repair_reason"] = "检测到源人声高潮段可能有沙哑、毛刺或刺耳高频"
+                    metrics["auto_repair_variant_seconds"] = time.perf_counter() - step_start
+                except Exception as exc:
+                    metrics["auto_repair_variant_error"] = str(exc)
+            metrics["variants"] = variants
     elif options.polish_converted_vocal:
         step_start = time.perf_counter()
         update("优化换声后人声", 90)

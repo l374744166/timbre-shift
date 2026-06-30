@@ -101,6 +101,8 @@ class PipelineOptions:
     rvc_index_rate: Optional[float] = None
     generate_variants: bool = False
     pre_rvc_cleanup_mode: str = "off"
+    source_vocal_quality_enabled: bool = True
+    deharsh_mode: str = "off"
     mix_style: str = "natural"
 
 

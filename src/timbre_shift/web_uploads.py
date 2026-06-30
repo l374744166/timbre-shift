@@ -85,6 +85,8 @@ def read_uploads(
         "rvc_index_rate": form.getfirst("rvc_index_rate", ""),
         "generate_variants": form.getfirst("generate_variants", "") == "on",
         "pre_rvc_cleanup_mode": form.getfirst("pre_rvc_cleanup_mode", "off"),
+        "source_vocal_quality_enabled": form.getfirst("source_vocal_quality_enabled", "on") == "on",
+        "deharsh_mode": form.getfirst("deharsh_mode", "off"),
         "mix_style": form.getfirst("mix_style", "natural"),
     }
     if not fields["voice_profile_id"] and "voice" not in saved:

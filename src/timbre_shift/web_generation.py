@@ -68,6 +68,8 @@ def generate_song_payload(
             rvc_index_rate=float(fields["rvc_index_rate"]) if fields["rvc_index_rate"] != "" else None,
             generate_variants=bool(fields["generate_variants"]),
             pre_rvc_cleanup_mode=str(fields["pre_rvc_cleanup_mode"]),
+            source_vocal_quality_enabled=bool(fields.get("source_vocal_quality_enabled", True)),
+            deharsh_mode=str(fields.get("deharsh_mode", "off")),
             mix_style=str(fields["mix_style"]),
         ),
         progress=lambda step, percent: PROGRESS.update(step, percent),

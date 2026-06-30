@@ -6,9 +6,12 @@ import shutil
 from pathlib import Path
 
 from .commands import as_strs, run_command
+from .pre_rvc_repair import repair_source_vocal_before_rvc
 
 
 def preprocess_source_vocal_for_rvc(source_vocal: Path, output: Path, mode: str = "standard") -> Path:
+    if mode in {"ai_generated", "deharsh_strong"}:
+        return repair_source_vocal_before_rvc(source_vocal, output, mode=mode)
     mode = mode if mode in {"off", "standard", "strong"} else "standard"
     output.parent.mkdir(parents=True, exist_ok=True)
     if mode == "off":
