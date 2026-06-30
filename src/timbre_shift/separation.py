@@ -56,27 +56,27 @@ def separate_vocals_smart(
         )
         return _wrap_demucs(result, mode="demucs_high_quality")
 
-    try:
-        return _separate_with_audio_separator(song, output_dir, cache_dir=cache_dir)
-    except Exception as exc:
-        result = separate_vocals(
-            song,
-            output_dir,
-            model="htdemucs_ft",
-            cache_dir=cache_dir,
-            overlap=max(overlap, 0.25),
-            shifts=max(shifts, 1),
-        )
-        wrapped = _wrap_demucs(result, mode="ai_tolerant")
-        return SmartSeparationResult(
-            vocals=wrapped.vocals,
-            backing=wrapped.backing,
-            from_cache=wrapped.from_cache,
-            engine="demucs_high_quality",
-            mode="ai_tolerant",
-            fallback_used=True,
-            fallback_reason=str(exc),
-        )
+    # The RoFormer/audio-separator direct path can reduce bleed, but on some AI-generated
+    # songs it smears consonants badly enough that lyrics become unintelligible after RVC.
+    # Until we add a real intelligibility gate or user audition step, keep this mode safe
+    # by routing it to high-quality Demucs instead of feeding RoFormer vocals into RVC.
+    result = separate_vocals(
+        song,
+        output_dir,
+        model="htdemucs_ft",
+        cache_dir=cache_dir,
+        overlap=max(overlap, 0.25),
+        shifts=max(shifts, 1),
+    )
+    return SmartSeparationResult(
+        vocals=result.vocals,
+        backing=result.backing,
+        from_cache=result.from_cache,
+        engine="demucs_high_quality",
+        mode="demucs_high_quality",
+        fallback_used=True,
+        fallback_reason="AI歌容错分离已保护性改用高质量分离，避免歌词变糊",
+    )
 
 
 def _wrap_demucs(result: SeparationResult, mode: str) -> SmartSeparationResult:

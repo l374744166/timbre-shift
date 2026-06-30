@@ -29,10 +29,7 @@ def test_demucs_high_quality_uses_stronger_demucs_settings(monkeypatch):
     assert calls == {"model": "htdemucs_ft", "overlap": 0.25, "shifts": 1}
 
 
-def test_ai_tolerant_falls_back_when_audio_separator_missing(monkeypatch):
-    def fake_audio_separator(*args, **kwargs):
-        raise FileNotFoundError("missing")
-
+def test_ai_tolerant_is_protected_by_high_quality_demucs(monkeypatch):
     def fake_demucs(song, output_dir, model, cache_dir, overlap, shifts):
         vocals = output_dir / "vocals.wav"
         backing = output_dir / "no_vocals.wav"
@@ -41,7 +38,6 @@ def test_ai_tolerant_falls_back_when_audio_separator_missing(monkeypatch):
         backing.write_bytes(b"b")
         return SeparationResult(vocals=vocals, backing=backing)
 
-    monkeypatch.setattr("timbre_shift.separation._separate_with_audio_separator", fake_audio_separator)
     monkeypatch.setattr("timbre_shift.separation.separate_vocals", fake_demucs)
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -49,10 +45,10 @@ def test_ai_tolerant_falls_back_when_audio_separator_missing(monkeypatch):
         song.write_bytes(b"song")
         result = separate_vocals_smart(song, root / "out", mode="ai_tolerant")
 
-    assert result.mode == "ai_tolerant"
+    assert result.mode == "demucs_high_quality"
     assert result.engine == "demucs_high_quality"
     assert result.fallback_used is True
-    assert "missing" in (result.fallback_reason or "")
+    assert "避免歌词变糊" in (result.fallback_reason or "")
 
 
 def test_find_audio_separator_stems_by_common_names():
