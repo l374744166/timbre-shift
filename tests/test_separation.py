@@ -65,3 +65,15 @@ def test_find_audio_separator_stems_by_common_names():
 
         assert _find_stem(root, "vocals") == vocals
         assert _find_stem(root, "backing") == backing
+
+
+def test_find_audio_separator_treats_other_as_backing():
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        vocals = root / "song_(vocals)_bs_roformer.wav"
+        backing = root / "song_(other)_bs_roformer.wav"
+        vocals.write_bytes(b"v")
+        backing.write_bytes(b"b")
+
+        assert _find_stem(root, "vocals") == vocals
+        assert _find_stem(root, "backing") == backing

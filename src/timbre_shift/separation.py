@@ -156,7 +156,7 @@ def _find_stem(output_dir: Path, kind: str) -> Path | None:
         keywords = ["vocal", "voice", "sing"]
         negative = ["no_vocal", "novocal", "instrumental", "accompaniment", "karaoke", "inst"]
     else:
-        keywords = ["instrumental", "accompaniment", "karaoke", "no_vocal", "novocal", "inst"]
+        keywords = ["instrumental", "accompaniment", "karaoke", "no_vocal", "novocal", "inst", "other"]
         negative = []
     for path in candidates:
         name = path.stem.lower().replace(" ", "_").replace("-", "_")
