@@ -19,7 +19,7 @@ from .audio import (
     probe_duration,
 )
 from .commands import require_binary
-from .demucs import separate_vocals
+from .separation import separate_vocals_smart as separate_vocals
 from .diagnostics import AnalyzerContext, analyze_generation
 from .generation_history import archive_generation_history
 from .library import (
@@ -79,6 +79,11 @@ def _timeline_problem_segments(problem_segments: list[dict], compact_result) -> 
     if compact_result is None:
         return problem_segments
     return map_compact_problem_segments(problem_segments, compact_result.segments)
+
+
+def _string_attr(value: object, name: str, default: str) -> str:
+    attr = getattr(value, name, default)
+    return attr if isinstance(attr, str) else default
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
@@ -148,6 +153,10 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         "library_voice_hit": False,
         "library_song_stems_hit": False,
         "demucs_cache_hit": False,
+        "separation_mode": options.separation_mode,
+        "separation_engine": None,
+        "separation_fallback_used": False,
+        "separation_fallback_reason": None,
         "seedvc_cache_hit": False,
         "rvc_mlx_cache_hit": False,
         "rvc_mlx_model_path": None,
@@ -392,21 +401,34 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         compact_result = None
     else:
         step_start = time.perf_counter()
-        update(f"分离人声和伴奏（{preset.demucs_model}）", 30)
+        separation_mode_label = {
+            "standard": "标准分离",
+            "demucs_high_quality": "高质量分离",
+            "ai_tolerant": "AI歌容错分离",
+        }.get(options.separation_mode, "标准分离")
+        update(f"分离人声和伴奏（{separation_mode_label}）", 30)
         separation = separate_vocals(
             prepared_song,
             output_dir=separated_dir,
+            mode=options.separation_mode,
             model=preset.demucs_model,
             cache_dir=options.cache_dir,
             overlap=preset.demucs_overlap,
             shifts=preset.demucs_shifts,
         )
         metrics["demucs_seconds"] = time.perf_counter() - step_start
+        metrics["separation_mode"] = _string_attr(separation, "mode", options.separation_mode)
+        metrics["separation_engine"] = _string_attr(separation, "engine", "demucs")
+        metrics["separation_fallback_used"] = bool(getattr(separation, "fallback_used", False) is True)
+        fallback_reason = getattr(separation, "fallback_reason", None)
+        metrics["separation_fallback_reason"] = fallback_reason if isinstance(fallback_reason, str) else None
         if not separation.vocals.exists() or not separation.backing.exists():
-            raise FileNotFoundError(f"Demucs output not found under {separated_dir}")
+            raise FileNotFoundError(f"Separation output not found under {separated_dir}")
         source_vocal = separation.vocals
         backing_track = separation.backing
         cache_label = "命中缓存" if separation.from_cache else "新分离"
+        if bool(getattr(separation, "fallback_used", False)):
+            cache_label = f"{cache_label}，已回退"
         metrics["demucs_cache_hit"] = separation.from_cache
         compact_result = None
         if song_record and preset.clip_seconds is None:
@@ -420,7 +442,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                 song_record.id,
                 library_vocals,
                 library_backing,
-                preset.demucs_model,
+                str(metrics.get("separation_engine") or preset.demucs_model),
                 cache_label,
                 db_path=options.library_db_path,
             )

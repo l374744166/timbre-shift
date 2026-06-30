@@ -71,6 +71,7 @@ def generate_song_payload(
             source_vocal_quality_enabled=bool(fields.get("source_vocal_quality_enabled", True)),
             deharsh_mode=str(fields.get("deharsh_mode", "off")),
             mix_style=str(fields["mix_style"]),
+            separation_mode=str(fields.get("separation_mode", "standard")),
         ),
         progress=lambda step, percent: PROGRESS.update(step, percent),
     )

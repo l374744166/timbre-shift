@@ -104,6 +104,7 @@ class PipelineOptions:
     source_vocal_quality_enabled: bool = True
     deharsh_mode: str = "off"
     mix_style: str = "natural"
+    separation_mode: str = "standard"
 
 
 def resolve_preset(options: PipelineOptions) -> RenderPreset:

@@ -91,6 +91,7 @@ def read_uploads(
         "source_vocal_quality_enabled": form.getfirst("source_vocal_quality_enabled", "on") == "on",
         "deharsh_mode": form.getfirst("deharsh_mode", "off"),
         "mix_style": form.getfirst("mix_style", "natural"),
+        "separation_mode": _clean_separation_mode(form.getfirst("separation_mode", "standard")),
     }
     if not fields["voice_profile_id"] and "voice" not in saved:
         raise ValueError("请选择本地音色，或上传一个新声音样本")
@@ -203,3 +204,7 @@ def _clean_voice_source_type(value: str) -> str:
     if value not in {"clean_voice", "mixed_voice"}:
         return "clean_voice"
     return value
+
+
+def _clean_separation_mode(value: str) -> str:
+    return value if value in {"standard", "demucs_high_quality", "ai_tolerant"} else "standard"

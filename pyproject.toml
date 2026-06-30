@@ -15,6 +15,9 @@ tts = [
   "piper-tts",
   "edge-tts",
 ]
+enhanced-separation = [
+  "audio-separator",
+]
 
 [project.scripts]
 timbre-shift = "timbre_shift.cli:main"
