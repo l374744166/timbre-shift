@@ -13,6 +13,7 @@ from .demucs import SeparationResult, separate_vocals, sha256_file
 SEPARATION_MODES = {
     "standard",
     "demucs_high_quality",
+    "demucs_max_quality",
     "ai_tolerant",
 }
 
@@ -55,6 +56,17 @@ def separate_vocals_smart(
             shifts=max(shifts, 1),
         )
         return _wrap_demucs(result, mode="demucs_high_quality")
+
+    if mode == "demucs_max_quality":
+        result = separate_vocals(
+            song,
+            output_dir,
+            model="htdemucs_ft",
+            cache_dir=cache_dir,
+            overlap=max(overlap, 0.50),
+            shifts=max(shifts, 2),
+        )
+        return _wrap_demucs(result, mode="demucs_max_quality")
 
     # The RoFormer/audio-separator direct path can reduce bleed, but on some AI-generated
     # songs it smears consonants badly enough that lyrics become unintelligible after RVC.

@@ -404,6 +404,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
         separation_mode_label = {
             "standard": "标准分离",
             "demucs_high_quality": "高质量分离",
+            "demucs_max_quality": "最高质量分离",
             "ai_tolerant": "AI歌容错分离",
         }.get(options.separation_mode, "标准分离")
         update(f"分离人声和伴奏（{separation_mode_label}）", 30)

@@ -207,4 +207,4 @@ def _clean_voice_source_type(value: str) -> str:
 
 
 def _clean_separation_mode(value: str) -> str:
-    return value if value in {"standard", "demucs_high_quality", "ai_tolerant"} else "standard"
+    return value if value in {"standard", "demucs_high_quality", "demucs_max_quality", "ai_tolerant"} else "standard"
