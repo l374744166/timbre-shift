@@ -66,6 +66,9 @@ def read_uploads(
     if engine_id not in SUPPORTED_ENGINES:
         engine_id = "seedvc"
 
+    rvc_index_rate = form.getfirst("rvc_index_rate", "")
+    allow_experimental_index = form.getfirst("allow_experimental_index", "") == "on" or rvc_index_rate not in {"", "0", "0.0"}
+
     fields: dict[str, object] = {
         "mode": mode,
         "engine_id": engine_id,
@@ -81,8 +84,8 @@ def read_uploads(
         "rvc_preset": form.getfirst("rvc_preset", "stable_balanced"),
         "diction_mode": form.getfirst("diction_mode", "light"),
         "vocal_style": form.getfirst("vocal_style", "neutral"),
-        "allow_experimental_index": form.getfirst("allow_experimental_index", "") == "on",
-        "rvc_index_rate": form.getfirst("rvc_index_rate", ""),
+        "allow_experimental_index": allow_experimental_index,
+        "rvc_index_rate": rvc_index_rate,
         "generate_variants": form.getfirst("generate_variants", "") == "on",
         "pre_rvc_cleanup_mode": form.getfirst("pre_rvc_cleanup_mode", "off"),
         "source_vocal_quality_enabled": form.getfirst("source_vocal_quality_enabled", "on") == "on",

@@ -58,3 +58,25 @@ def test_read_voice_library_upload_saves_file(tmp_path: Path):
     assert source_type == "mixed_voice"
     assert len(paths) == 1
     assert paths[0].read_bytes() == b"audio-bytes"
+
+
+def test_rvc_index_rate_enables_memory_without_extra_checkbox(tmp_path: Path):
+    from timbre_shift.web_uploads import read_uploads
+
+    boundary = "timbre-generate-boundary"
+    body = multipart_body(
+        boundary,
+        [
+            ("engine_id", None, b"rvc_applio"),
+            ("voice_profile_id", None, b"voice-1"),
+            ("song_id", None, b"song-1"),
+            ("rvc_index_rate", None, b"0.25"),
+            ("voice", "voice.wav", b"voice"),
+            ("song", "song.wav", b"song"),
+        ],
+    )
+
+    _files, fields = read_uploads(BytesIO(body), headers_for(boundary, body), tmp_path)
+
+    assert fields["rvc_index_rate"] == "0.25"
+    assert fields["allow_experimental_index"] is True
