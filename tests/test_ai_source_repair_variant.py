@@ -74,7 +74,7 @@ def test_warning_source_adds_ai_source_repair_variant(monkeypatch):
         fake_engine = FakeApplioEngine()
         monkeypatch.setattr("timbre_shift.pipeline.get_engine", lambda _engine_id: fake_engine)
         monkeypatch.setattr(
-            "timbre_shift.pipeline.analyze_source_vocal_quality",
+            "timbre_shift.pipeline_source.analyze_source_vocal_quality",
             lambda *args, **kwargs: {
                 "source_quality_score": 45,
                 "source_quality_summary": "高潮段有风险",

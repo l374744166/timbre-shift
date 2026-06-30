@@ -47,12 +47,12 @@ class PipelineTests(unittest.TestCase):
                 target.write_bytes(source.read_bytes())
                 return target
 
-            with patch("timbre_shift.pipeline.normalize_audio", side_effect=fake_normalize), \
-                patch("timbre_shift.pipeline.middle_start", return_value=None), \
+            with patch("timbre_shift.pipeline_prepare.normalize_audio", side_effect=fake_normalize), \
+                patch("timbre_shift.pipeline_prepare.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.separate_vocals") as separate_vocals, \
                 patch("timbre_shift.pipeline_seedvc.convert_singing_voice_result", return_value=seedvc_result(converted)), \
                 patch("timbre_shift.pipeline.polish_vocal", side_effect=lambda source, output: source), \
-                patch("timbre_shift.pipeline.export_mp3", return_value=root / "out" / "final.mp3"):
+                patch("timbre_shift.pipeline_output.export_mp3", return_value=root / "out" / "final.mp3"):
                 final = run_demo(
                     PipelineOptions(
                         voice=voice,
@@ -105,15 +105,15 @@ class PipelineTests(unittest.TestCase):
                 total_duration=60.0,
             )
 
-            with patch("timbre_shift.pipeline.normalize_audio", side_effect=fake_normalize), \
-                patch("timbre_shift.pipeline.middle_start", return_value=None), \
+            with patch("timbre_shift.pipeline_prepare.normalize_audio", side_effect=fake_normalize), \
+                patch("timbre_shift.pipeline_prepare.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.separate_vocals", return_value=separation), \
                 patch("timbre_shift.pipeline.compact_for_conversion", return_value=compact) as compact_for_conversion, \
                 patch("timbre_shift.pipeline_seedvc.convert_singing_voice_result", return_value=seedvc_result(converted)) as convert_singing_voice, \
                 patch("timbre_shift.pipeline.restore_compact_vocals", return_value=restored) as restore_compact_vocals, \
                 patch("timbre_shift.pipeline.polish_vocal", side_effect=fake_normalize) as polish_vocal, \
-                patch("timbre_shift.pipeline.mix_audio", return_value=final) as mix_audio, \
-                patch("timbre_shift.pipeline.export_mp3", return_value=root / "out" / "final.mp3"):
+                patch("timbre_shift.pipeline_output.mix_audio", return_value=final) as mix_audio, \
+                patch("timbre_shift.pipeline_output.export_mp3", return_value=root / "out" / "final.mp3"):
                 result = run_demo(
                     PipelineOptions(
                         voice=voice,

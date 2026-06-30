@@ -2,39 +2,32 @@
 
 from __future__ import annotations
 
-import json
-import mimetypes
 import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .generation_history import list_generation_history
 from .history_actions import delete_history_job, restore_history_job
-from .library import (
-    DEFAULT_DB_PATH,
-    DEFAULT_LIBRARY_DIR,
-    archive_song,
-    archive_voice_sample,
-    archive_voice_model,
-    archive_voice_profile,
-    create_empty_voice_profile,
-    list_voice_samples,
-    list_voice_models,
-    refresh_voice_profile_references,
-)
 from .pipeline import check_environment
 from .variant_actions import record_variant_feedback, select_variant
 from .voice_preferences import save_voice_preference
 from .web_generation import generate_song_payload
 from .web_queries import voice_models_payload, voice_preference_payload, voice_samples_payload
 from .web_results import build_latest_result_response, create_test_result, write_error_metrics
-from .web_serializers import serialize_voice_sample
 from .web_state import PROGRESS
 from .web_template import page_html
+from .web_responses import ResponseHelpers
 from .web_training import prepare_applio_payload, train_applio_payload
+from .web_library_actions import (
+    create_voice_profile_payload,
+    delete_song_payload,
+    delete_voice_model_payload,
+    delete_voice_payload,
+    delete_voice_sample_payload,
+)
 from .web_tts import generate_tts_payload
 from .web_uploads import (
     read_form_fields as parse_form_fields,
@@ -42,7 +35,7 @@ from .web_uploads import (
     read_voice_library_upload as parse_voice_library_upload,
     read_voice_sample_upload as parse_voice_sample_upload,
 )
-from .web_utils import safe_download_filename, safe_filename
+from .web_utils import safe_filename
 from .web_voice_tasks import add_voice_samples_from_uploads, save_voice_profile_from_uploads
 
 
@@ -57,8 +50,9 @@ def safe_history_job_id(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "", value)
 
 
-class AppHandler(BaseHTTPRequestHandler):
+class AppHandler(ResponseHelpers, BaseHTTPRequestHandler):
     seed_vc_dir: Path = Path("vendor/seed-vc")
+    static_root: Path = STATIC_ROOT
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -259,33 +253,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/delete-voice-sample":
             try:
-                fields = self.read_form_fields()
-                voice_id = str(fields.get("voice_profile_id", "")).strip()
-                sample_id = str(fields.get("sample_id", "")).strip()
-                if not voice_id or not sample_id:
-                    raise ValueError("请选择要删除的素材")
-                archive_voice_sample(sample_id, db_path=DEFAULT_DB_PATH)
-                refresh_voice_profile_references(voice_id, library_dir=DEFAULT_LIBRARY_DIR, db_path=DEFAULT_DB_PATH)
-                samples = list_voice_samples(voice_id, db_path=DEFAULT_DB_PATH)
-                self.send_json(
-                    {
-                        "message": "素材已删除",
-                        "sample_count": len(samples),
-                        "samples": [serialize_voice_sample(sample) for sample in samples],
-                    }
-                )
+                self.send_json(delete_voice_sample_payload(self.read_form_fields()))
             except Exception as exc:
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
         if self.path == "/api/delete-voice":
             try:
-                fields = self.read_form_fields()
-                voice_id = str(fields.get("voice_profile_id", "")).strip()
-                if not voice_id:
-                    raise ValueError("请选择要删除的音色")
-                archive_voice_profile(voice_id, db_path=DEFAULT_DB_PATH)
-                self.send_json({"id": voice_id, "message": "音色已删除"})
+                self.send_json(delete_voice_payload(self.read_form_fields()))
             except Exception as exc:
                 if PROGRESS.is_cancelled():
                     PROGRESS.cancel()
@@ -296,24 +271,14 @@ class AppHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/delete-song":
             try:
-                fields = self.read_form_fields()
-                song_id = str(fields.get("song_id", "")).strip()
-                if not song_id:
-                    raise ValueError("请选择要删除的歌曲")
-                archive_song(song_id, db_path=DEFAULT_DB_PATH)
-                self.send_json({"id": song_id, "message": "歌曲已删除"})
+                self.send_json(delete_song_payload(self.read_form_fields()))
             except Exception as exc:
                 self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
 
         if self.path == "/api/delete-voice-model":
             try:
-                fields = self.read_form_fields()
-                model_id = str(fields.get("voice_model_id", "")).strip()
-                if not model_id:
-                    raise ValueError("请选择要删除的模型")
-                archive_voice_model(model_id, db_path=DEFAULT_DB_PATH)
-                self.send_json({"id": model_id, "message": "模型已删除"})
+                self.send_json(delete_voice_model_payload(self.read_form_fields()))
             except Exception as exc:
                 if PROGRESS.is_cancelled():
                     PROGRESS.cancel()
@@ -324,24 +289,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/create-voice-profile":
             try:
-                fields = self.read_form_fields()
-                voice_name = str(fields.get("voice_name", "")).strip() or "未命名音色库"
-                profile = create_empty_voice_profile(
-                    name=voice_name,
-                    description="RVC training library",
-                    library_dir=DEFAULT_LIBRARY_DIR,
-                    db_path=DEFAULT_DB_PATH,
-                )
-                self.send_json(
-                    {
-                        "id": profile.id,
-                        "name": profile.name,
-                        "source_type": profile.source_type,
-                        "sample_count": 0,
-                        "added_count": 0,
-                        "message": "音色库已创建，请添加训练素材",
-                    }
-                )
+                self.send_json(create_voice_profile_payload(self.read_form_fields()))
             except Exception as exc:
                 if PROGRESS.is_cancelled():
                     PROGRESS.cancel()
@@ -428,97 +376,6 @@ class AppHandler(BaseHTTPRequestHandler):
     def read_voice_sample_upload(self) -> tuple[list[Path], str, str, str]:
         return parse_voice_sample_upload(self.rfile, self.headers, UPLOAD_ROOT)
 
-    def send_html(self, body: str) -> None:
-        data = body.encode("utf-8")
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def send_json(self, payload: Dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        try:
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-        except (BrokenPipeError, ConnectionResetError):
-            # The browser can disconnect after a long-running request finishes.
-            # That should not turn a completed training job into a failed one.
-            return
-
-    def send_static_file(self, relative_path: str, head_only: bool = False) -> None:
-        if not relative_path or "\x00" in relative_path:
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        static_root = STATIC_ROOT.resolve()
-        path = (static_root / relative_path).resolve()
-        try:
-            path.relative_to(static_root)
-        except ValueError:
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        if not path.is_file():
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        data = path.read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", mime)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-        if not head_only:
-            self.wfile.write(data)
-
-    def send_file(self, path: Path, head_only: bool = False, download_name: str | None = None) -> None:
-        if not path.exists():
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        file_size = path.stat().st_size
-        range_header = self.headers.get("Range", "")
-        start = 0
-        end = file_size - 1
-        status = HTTPStatus.OK
-
-        if range_header.startswith("bytes="):
-            range_value = range_header.removeprefix("bytes=").split(",", 1)[0]
-            start_text, _, end_text = range_value.partition("-")
-            try:
-                if start_text:
-                    start = int(start_text)
-                if end_text:
-                    end = int(end_text)
-                end = min(end, file_size - 1)
-                if start > end:
-                    raise ValueError
-                status = HTTPStatus.PARTIAL_CONTENT
-            except ValueError:
-                self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
-                return
-
-        content_length = end - start + 1
-        filename = safe_download_filename(download_name, path.name)
-        ascii_filename = safe_filename(filename)
-        disposition = f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{quote(filename, safe='')}"
-        self.send_response(status)
-        self.send_header("Content-Type", mime)
-        self.send_header("Content-Disposition", disposition)
-        self.send_header("Content-Length", str(content_length))
-        self.send_header("Accept-Ranges", "bytes")
-        if status == HTTPStatus.PARTIAL_CONTENT:
-            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-        self.end_headers()
-        if not head_only:
-            with path.open("rb") as data:
-                data.seek(start)
-                self.wfile.write(data.read(content_length))
-
-    def log_message(self, format: str, *args: object) -> None:
-        print("%s - %s" % (self.address_string(), format % args))
 
 
 def run_web_app(host: str, port: int, seed_vc_dir: Path) -> None:

@@ -71,9 +71,10 @@ class PipelineEngineTests(unittest.TestCase):
                 db_path=db_path,
             )
 
-            with patch("timbre_shift.pipeline.normalize_audio", side_effect=fake_normalize), \
-                patch("timbre_shift.pipeline.middle_start", return_value=None), \
-                patch("timbre_shift.pipeline.probe_duration", return_value=10.0):
+            with patch("timbre_shift.pipeline_prepare.normalize_audio", side_effect=fake_normalize), \
+                patch("timbre_shift.pipeline_prepare.middle_start", return_value=None), \
+                patch("timbre_shift.pipeline.probe_duration", return_value=10.0), \
+                patch("timbre_shift.pipeline_prepare.probe_duration", return_value=10.0):
                 with self.assertRaisesRegex(FileNotFoundError, "RVC-MLX Experimental 模型不存在"):
                     run_demo(
                         PipelineOptions(
@@ -137,11 +138,12 @@ class PipelineEngineTests(unittest.TestCase):
             fake_engine = FakeRVCMLXEngine(converted)
 
             with patch("timbre_shift.pipeline.get_engine", return_value=fake_engine), \
-                patch("timbre_shift.pipeline.normalize_audio", side_effect=fake_normalize), \
-                patch("timbre_shift.pipeline.middle_start", return_value=None), \
+                patch("timbre_shift.pipeline_prepare.normalize_audio", side_effect=fake_normalize), \
+                patch("timbre_shift.pipeline_prepare.middle_start", return_value=None), \
                 patch("timbre_shift.pipeline.probe_duration", return_value=10.0), \
+                patch("timbre_shift.pipeline_prepare.probe_duration", return_value=10.0), \
                 patch("timbre_shift.pipeline.polish_vocal", side_effect=lambda source, output: source), \
-                patch("timbre_shift.pipeline.export_mp3", return_value=root / "out" / "final.mp3"):
+                patch("timbre_shift.pipeline_output.export_mp3", return_value=root / "out" / "final.mp3"):
                 result = run_demo(
                     PipelineOptions(
                         voice_profile_id=profile.id,
