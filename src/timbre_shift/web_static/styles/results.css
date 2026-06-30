@@ -69,3 +69,7 @@
 .result-grid.single-result-grid {grid-template-columns:1fr}
 .tts-result #mainPlayerCard {max-width:760px}
 .tts-result #savePreferenceButton {display:none}
+.variant-explain {border-left:3px solid var(--primary);
+  padding-left:9px;
+  color:var(--muted);
+  line-height:1.5}

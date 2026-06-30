@@ -81,7 +81,7 @@ async function restoreLatestResult() {
   try {
     const data = await api.latestResult();
     if (state.currentView !== 'dashboard') return;
-    renderResult(data);
+    renderResult(data, { scroll: false });
     const message = qs('#message');
     if (message) message.textContent = data.message || '已恢复最近一次生成结果';
   } catch {}

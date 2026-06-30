@@ -12,7 +12,7 @@ export function VoiceCard(option, selectedId = '', mode = 'seedvc') {
     const quality = count >= 3 ? '素材较适合演示' : '建议补充多首干声素材';
     return `<article class="resource-card ${option.value === selectedId ? 'selected' : ''}" data-voice-id="${escapeHtml(option.value)}">
       <div><h3>${name}</h3><p><span class="status-badge ${statusClass}">${status}</span></p></div>
-      <div class="card-actions"><button type="button" class="voice-train" data-id="${escapeHtml(option.value)}">${trainLabel}</button><button type="button" class="secondary voice-select" data-id="${escapeHtml(option.value)}">选择生成</button><button type="button" class="secondary danger voice-delete" data-id="${escapeHtml(option.value)}" data-name="${name}">删除</button></div>
+      <div class="card-actions"><button type="button" class="voice-train" data-id="${escapeHtml(option.value)}">${trainLabel}</button><button type="button" class="secondary voice-select" data-id="${escapeHtml(option.value)}">选择生成</button><button type="button" class="secondary voice-detail" data-id="${escapeHtml(option.value)}">详情</button><button type="button" class="secondary danger voice-delete" data-id="${escapeHtml(option.value)}" data-name="${name}">删除</button></div>
       <div class="card-meta"><span>RVC 模型：${modelCount} 个</span><span>${materialText}</span><span>${quality}</span></div>
     </article>`;
   }
@@ -22,6 +22,6 @@ export function VoiceCard(option, selectedId = '', mode = 'seedvc') {
   return `<article class="resource-card ${option.value === selectedId ? 'selected' : ''}" data-voice-id="${escapeHtml(option.value)}">
     <div><h3>${name}</h3><p><span class="status-badge ${statusClass}">${status}</span></p></div>
     <div class="card-meta"><span>${count} 个参考素材</span><span>质量提示：${quality}</span><span>Seed-VC：不需要训练</span></div>
-    <div class="card-actions"><button type="button" class="secondary voice-select" data-id="${escapeHtml(option.value)}">选择参考声音</button><button type="button" class="secondary danger voice-delete" data-id="${escapeHtml(option.value)}" data-name="${name}">删除</button></div>
+    <div class="card-actions"><button type="button" class="secondary voice-select" data-id="${escapeHtml(option.value)}">选择参考声音</button><button type="button" class="secondary voice-detail" data-id="${escapeHtml(option.value)}">详情</button><button type="button" class="secondary danger voice-delete" data-id="${escapeHtml(option.value)}" data-name="${name}">删除</button></div>
   </article>`;
 }

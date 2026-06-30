@@ -14,6 +14,8 @@ def test_ui_uses_product_workstation_shell_and_module_assets():
     app_js = (static_root / "app.js").read_text()
     dashboard_js = (static_root / "views" / "DashboardView.js").read_text()
     training_panel_js = (static_root / "views" / "DashboardTrainingPanel.js").read_text()
+    preflight_js = (static_root / "views" / "DashboardPreflight.js").read_text()
+    voice_detail_js = (static_root / "views" / "DashboardVoiceDetail.js").read_text()
     result_js = (static_root / "components" / "ResultCard.js").read_text()
     variant_js = (static_root / "components" / "VariantCard.js").read_text()
     base_css = (static_root / "styles" / "base.css").read_text()
@@ -42,12 +44,18 @@ def test_ui_uses_product_workstation_shell_and_module_assets():
     assert "咬字增强" in dashboard_js
     assert "音色记忆库" in dashboard_js
     assert "混音风格" in dashboard_js
+    assert "生成前检查" in preflight_js
+    assert "voiceDetailModal" in voice_detail_js
+    assert "scrollIntoView" in dashboard_js
     assert "RVC 训练设置" in training_panel_js
     assert "打开训练设置" in training_panel_js
     assert "添加素材并打开训练设置" in dashboard_js
     assert "scorecard" in result_js
     assert "干声人声" in result_js
     assert "downloadDryVocal" in result_js
+    assert "稳定版" in variant_js
+    assert "清晰版" in variant_js
+    assert "音色版" in variant_js
     assert "设为最终版本" in variant_js
     assert "标记喜欢" in variant_js
     assert ":root" in base_css
