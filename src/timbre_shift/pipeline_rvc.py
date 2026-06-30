@@ -68,12 +68,15 @@ def _render_rvc_variants(
     converted_dir: Path,
     output_dir: Path,
     mix_style_id: str = "natural",
+    exclude_preset_id: str | None = None,
 ) -> list[dict[str, object]]:
     variants_dir = output_dir / "variants"
     variants_dir.mkdir(parents=True, exist_ok=True)
     mix_style = get_mix_style(mix_style_id)
     rendered: list[dict[str, object]] = []
     for preset_id in variant_preset_ids():
+        if preset_id == exclude_preset_id:
+            continue
         preset = get_rvc_preset(preset_id)
         variant_dir = converted_dir / "variants" / preset_id
         processed, post_metrics = _postprocess_rvc_vocal(

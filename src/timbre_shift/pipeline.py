@@ -646,6 +646,7 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                 converted_dir=converted_dir,
                 output_dir=options.output_dir,
                 mix_style_id=mix_style.id,
+                exclude_preset_id=rvc_preset.id,
             )
             source_risky = bool(
                 metrics["source_problem_segment_count"]
