@@ -11,6 +11,7 @@ from .deharsh import deharsh_converted_vocal
 from .diction import diction_blend, enhance_diction
 from .mix_styles import get_mix_style
 from .rvc_presets import get_rvc_preset, variant_preset_ids
+from .segment_repair_blend import blend_problem_segments
 from .style_postprocess import apply_vocal_style
 
 
@@ -162,4 +163,63 @@ def _render_ai_source_repair_variant(
         "mix_style": mix_style.id,
         "pre_rvc_repair_mode": repair_mode,
         "deharsh_mode": deharsh_mode,
+    }
+
+
+def _render_localized_repair_variant(
+    base_vocal: Path,
+    rescue_vocal: Path,
+    source_vocal: Path,
+    backing_track: Path | None,
+    problem_segments: list[dict],
+    converted_dir: Path,
+    output_dir: Path,
+    mix_style_id: str = "natural",
+) -> dict[str, object]:
+    """Render a detail-preserving variant that only blends rescue audio in bad ranges."""
+    variants_dir = output_dir / "variants"
+    variants_dir.mkdir(parents=True, exist_ok=True)
+    localized_vocal = blend_problem_segments(
+        base_vocal=base_vocal,
+        repair_vocal=rescue_vocal,
+        output=converted_dir / "variants" / "localized_rescue" / "localized_rescue_vocal.wav",
+        problem_segments=problem_segments,
+        wet=0.58,
+        fade_seconds=0.10,
+    )
+    processed, post_metrics = _postprocess_rvc_vocal(
+        converted_vocal=localized_vocal,
+        source_vocal=source_vocal,
+        converted_dir=converted_dir / "variants" / "localized_rescue",
+        diction_mode="light",
+        vocal_style="neutral",
+        consonant_blend=None,
+        deharsh_mode="light",
+    )
+    mix_style = get_mix_style(mix_style_id)
+    wav_output = variants_dir / "localized_rescue.wav"
+    if backing_track is None:
+        shutil.copy2(processed, wav_output)
+    else:
+        mix_audio(
+            processed,
+            backing_track,
+            wav_output,
+            vocal_volume=mix_style.vocal_gain,
+            backing_volume=mix_style.backing_gain,
+            limiter=0.92,
+        )
+    mp3_output = export_mp3(wav_output, variants_dir / "localized_rescue.mp3")
+    return {
+        "id": "localized_rescue",
+        "name": "只修问题段·细节保留版",
+        "description": "只在检测到刺耳、毛刺或爆点的位置混入保底修复，好段尽量保留原来的细节和情绪。",
+        "wav": str(wav_output),
+        "mp3": str(mp3_output),
+        "diction_mode": "light",
+        "consonant_blend": post_metrics["consonant_blend"],
+        "vocal_style": "neutral",
+        "mix_style": mix_style.id,
+        "repair_strategy": "localized_blend",
+        "problem_segment_count": len(problem_segments),
     }

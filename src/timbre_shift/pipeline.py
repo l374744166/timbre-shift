@@ -45,14 +45,40 @@ from .rvc_presets import get_rvc_preset
 from .source_vocal_quality import analyze_source_vocal_quality
 from .pre_rvc_cleanup import preprocess_source_vocal_for_rvc
 from .pre_rvc_repair import repair_source_vocal_before_rvc
-from .pipeline_rvc import _postprocess_rvc_vocal, _render_ai_source_repair_variant, _render_rvc_variants
+from .pipeline_rvc import (
+    _postprocess_rvc_vocal,
+    _render_ai_source_repair_variant,
+    _render_localized_repair_variant,
+    _render_rvc_variants,
+)
 from .pipeline_seedvc import _convert_seedvc_chunked, _convert_seedvc_whole
-from .vocal_segments import compact_for_conversion, restore_compact_vocals
+from .vocal_segments import compact_for_conversion, map_compact_problem_segments, restore_compact_vocals
 
 ProgressCallback = Callable[[str, int], None]
 
 
 _seedvc_chunk_settings = seedvc_chunk_settings
+
+
+def _restore_variant_vocal_if_needed(
+    converted_variant: Path,
+    output: Path,
+    compact_result,
+) -> Path:
+    if compact_result is None:
+        return converted_variant
+    return restore_compact_vocals(
+        converted_compact=converted_variant,
+        output=output,
+        segments=compact_result.segments,
+        total_duration=compact_result.total_duration,
+    )
+
+
+def _timeline_problem_segments(problem_segments: list[dict], compact_result) -> list[dict]:
+    if compact_result is None:
+        return problem_segments
+    return map_compact_problem_segments(problem_segments, compact_result.segments)
 
 
 def check_environment(seed_vc_dir: Path) -> EnvironmentReport:
@@ -644,9 +670,14 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                         output_dir=converted_dir / options.engine_id / "ai_source_repair",
                         options=rvc_convert_options,
                     )
+                    repair_variant_vocal = _restore_variant_vocal_if_needed(
+                        repair_variant_result.converted_vocal_path,
+                        converted_dir / options.engine_id / "ai_source_repair" / "converted_full_timeline.wav",
+                        compact_result,
+                    )
                     variants.append(
                         _render_ai_source_repair_variant(
-                            repaired_vocal=repair_variant_result.converted_vocal_path,
+                            repaired_vocal=repair_variant_vocal,
                             source_vocal=diagnostic_source_vocal,
                             backing_track=backing_track,
                             converted_dir=converted_dir,
@@ -666,9 +697,14 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                         output_dir=converted_dir / options.engine_id / "noise_tolerant",
                         options=rvc_convert_options,
                     )
+                    rescue_vocal = _restore_variant_vocal_if_needed(
+                        rescue_result.converted_vocal_path,
+                        converted_dir / options.engine_id / "noise_tolerant" / "converted_full_timeline.wav",
+                        compact_result,
+                    )
                     variants.append(
                         _render_ai_source_repair_variant(
-                            repaired_vocal=rescue_result.converted_vocal_path,
+                            repaired_vocal=rescue_vocal,
                             source_vocal=diagnostic_source_vocal,
                             backing_track=backing_track,
                             converted_dir=converted_dir,
@@ -681,6 +717,23 @@ def run_demo(options: PipelineOptions, progress: ProgressCallback | None = None)
                             repair_mode="noise_tolerant",
                         )
                     )
+                    localized_segments = _timeline_problem_segments(
+                        metrics["source_problem_segments"] if isinstance(metrics["source_problem_segments"], list) else [],
+                        compact_result,
+                    )
+                    if localized_segments:
+                        variants.append(
+                            _render_localized_repair_variant(
+                                base_vocal=raw_converted_vocal,
+                                rescue_vocal=rescue_vocal,
+                                source_vocal=diagnostic_source_vocal,
+                                backing_track=backing_track,
+                                problem_segments=localized_segments,
+                                converted_dir=converted_dir,
+                                output_dir=options.output_dir,
+                                mix_style_id=mix_style.id,
+                            )
+                        )
                     metrics["auto_repair_variant_generated"] = True
                     metrics["auto_repair_reason"] = "检测到源人声高潮段可能有沙哑、毛刺或刺耳高频"
                     metrics["auto_repair_variant_seconds"] = time.perf_counter() - step_start

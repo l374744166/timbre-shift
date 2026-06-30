@@ -231,3 +231,29 @@ def compact_for_conversion(vocals: Path, output: Path) -> CompactVocalResult:
     )
     compact = compact_vocals(vocals, output, segments)
     return CompactVocalResult(audio=compact, segments=segments, total_duration=total_duration)
+
+
+def map_compact_problem_segments(
+    problem_segments: list[dict],
+    compact_segments: list[VocalSegment],
+) -> list[dict]:
+    """Map problem segments measured on compact audio back to original timeline."""
+    mapped: list[dict] = []
+    for problem in problem_segments:
+        try:
+            problem_start = float(problem.get("start", 0.0))
+            problem_end = float(problem.get("end", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if problem_end <= problem_start:
+            continue
+        for segment in compact_segments:
+            overlap_start = max(problem_start, segment.compact_start)
+            overlap_end = min(problem_end, segment.compact_end)
+            if overlap_end <= overlap_start:
+                continue
+            mapped_problem = dict(problem)
+            mapped_problem["start"] = round(segment.original_start + (overlap_start - segment.compact_start), 3)
+            mapped_problem["end"] = round(segment.original_start + (overlap_end - segment.compact_start), 3)
+            mapped.append(mapped_problem)
+    return mapped
