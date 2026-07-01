@@ -191,3 +191,24 @@
   padding-left:18px;
   display:grid;
   gap:4px}
+.upload-preview {margin-top:10px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px 14px;
+  background:#fff;
+  display:grid;
+  gap:6px}
+.upload-preview strong {color:var(--text)}
+.upload-preview p {margin:0;
+  color:var(--muted);
+  line-height:1.5}
+.upload-preview ul {margin:0;
+  padding-left:18px;
+  display:grid;
+  gap:4px;
+  color:var(--text)}
+.upload-preview li span {color:var(--muted);
+  font-size:12px}
+.song-detail-modal {width:min(760px,100%)}
+.song-detail-body {display:grid;
+  gap:14px}

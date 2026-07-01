@@ -12,6 +12,8 @@ import { VariantCard } from '../components/VariantCard.js';
 import { preflightPanel, renderPreflight } from './DashboardPreflight.js';
 import { closeVoiceDetail, openVoiceDetail, voiceDetailModal } from './DashboardVoiceDetail.js';
 import { clearErrorAdvice, errorAdvicePanel, showErrorAdvice } from './DashboardErrorTips.js';
+import { closeSongDetail, openSongDetail, songDetailModal } from './SongDetailModal.js';
+import { renderSongUploadPreview, renderVoiceUploadPreview, uploadPreview } from './DashboardUploadPreview.js';
 
 function isRvc() {
   return state.selectedEngine === 'rvc_applio';
@@ -123,9 +125,9 @@ export const DashboardView = {
       <label class="choice-card ${state.selectedEngine === 'rvc_applio' ? 'selected' : ''}"><input type="radio" name="engine_id" value="rvc_applio" ${state.selectedEngine === 'rvc_applio' ? 'checked' : ''}><strong>Applio RVC 正式生成</strong><span>先训练目标音色模型，适合多首歌长期复用</span></label>
     </div></section>
     <section class="step-section"><h3>${copy.voiceTitle}</h3><p class="muted">${copy.voiceHelp}</p><div class="resource-grid" id="voiceCards">${voiceCards()}</div>
-      <div class="${uploadStripClass}"><input id="voice" name="voice" type="file" accept="audio/*" multiple><input id="voiceName" name="voice_name" placeholder="${copy.voiceNamePlaceholder}">${voiceSourceControl}<button class="secondary" id="saveVoiceButton" type="button">${copy.saveButton}</button><button class="secondary" id="addVoiceSampleButton" type="button">${copy.addButton}</button>${isRvc() ? '<button id="addVoiceSampleAndTrainButton" type="button">添加素材并打开训练设置</button>' : ''}</div><div class="message" id="voiceSaveMessage"></div></section>
+      <div class="${uploadStripClass}"><input id="voice" name="voice" type="file" accept="audio/*" multiple><input id="voiceName" name="voice_name" placeholder="${copy.voiceNamePlaceholder}">${voiceSourceControl}<button class="secondary" id="saveVoiceButton" type="button">${copy.saveButton}</button><button class="secondary" id="addVoiceSampleButton" type="button">${copy.addButton}</button>${isRvc() ? '<button id="addVoiceSampleAndTrainButton" type="button">添加素材并打开训练设置</button>' : ''}</div><div class="message" id="voiceSaveMessage"></div>${uploadPreview('voiceUploadPreview')}</section>
     ${rvcTrainingPanel()}
-    <section class="step-section"><h3>Step 3：选择歌曲</h3><p class="muted">${copy.songHelp}</p><div class="resource-grid" id="songCards">${songCards()}</div><div class="upload-strip"><input id="song" name="song" type="file" accept="audio/*"><span class="muted">也可以上传干净人声，高级设置里选择源人声清理。</span></div></section>
+    <section class="step-section"><h3>Step 3：选择歌曲</h3><p class="muted">${copy.songHelp}</p><div class="resource-grid" id="songCards">${songCards()}</div><div class="upload-strip"><input id="song" name="song" type="file" accept="audio/*"><span class="muted">也可以上传干净人声，高级设置里选择源人声清理。</span></div>${uploadPreview('songUploadPreview')}</section>
     <section class="step-section"><h3>Step 4：生成设置</h3><div class="settings-grid">
       <label>${copy.goalLabel}<select id="rvcPreset" name="rvc_preset">${copy.goalOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
       <label>${copy.styleLabel}<select id="vocalStyle" name="vocal_style">${copy.styleOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label>
@@ -142,7 +144,7 @@ export const DashboardView = {
         <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="progressDetails" class="progress-details hidden"></div>
       </div>
     </section>
-    ${ResultCard()}${voiceDetailModal()}</form>`;
+    ${ResultCard()}${voiceDetailModal()}${songDetailModal()}</form>`;
   },
   mount: (options = {}) => {
     const selectVoice = (id) => {
@@ -182,6 +184,18 @@ export const DashboardView = {
       }
       qs('#voiceCards').innerHTML = voiceCards();
     };
+    const selectSong = (id) => {
+      state.selectedSongId = id || '';
+      qs('#songLibrary').value = state.selectedSongId;
+      qs('#songIdField').value = state.selectedSongId;
+      qs('#songCards').innerHTML = songCards();
+      refreshPreflight?.();
+      refreshUploadPreviews?.();
+    };
+    const refreshUploadPreviews = () => {
+      renderVoiceUploadPreview({ isRvc: isRvc() });
+      renderSongUploadPreview();
+    };
     const removeSongOption = (id) => {
       const option = qs('#songLibrary')?.querySelector(`option[value="${CSS.escape(id)}"]`);
       option?.remove();
@@ -192,6 +206,7 @@ export const DashboardView = {
       }
       qs('#songCards').innerHTML = songCards();
       refreshPreflight?.();
+      refreshUploadPreviews?.();
     };
     const setDashboardMessage = (text, isError = false) => {
       const message = qs('#dashboardTrainMessage');
@@ -309,14 +324,18 @@ export const DashboardView = {
       await loadRvcTrainingDetails();
       if (button.classList.contains('voice-train')) qs('#rvcInlinePanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    qs('#songCards')?.addEventListener('click', async (event) => { const deleteButton = event.target.closest('.song-delete'); if (deleteButton) { const name = deleteButton.dataset.name || '这首歌'; if (!window.confirm(`删除歌曲「${name}」？`)) return; qs('#message').textContent = '正在删除歌曲...'; const body = new FormData(); body.append('song_id', deleteButton.dataset.id || ''); try { const data = await api.post('/api/delete-song', body); removeSongOption(data.id || deleteButton.dataset.id || ''); qs('#message').textContent = data.message || '歌曲已删除'; } catch (error) { qs('#message').textContent = error.message; } return; } const button = event.target.closest('.song-select'); if (!button) return; state.selectedSongId = button.dataset.id; qs('#songLibrary').value = state.selectedSongId; qs('#songIdField').value = state.selectedSongId; refreshPreflight(); });
+    qs('#songCards')?.addEventListener('click', async (event) => { const deleteButton = event.target.closest('.song-delete'); if (deleteButton) { const name = deleteButton.dataset.name || '这首歌'; if (!window.confirm(`删除歌曲「${name}」？`)) return; qs('#message').textContent = '正在删除歌曲...'; const body = new FormData(); body.append('song_id', deleteButton.dataset.id || ''); try { const data = await api.post('/api/delete-song', body); removeSongOption(data.id || deleteButton.dataset.id || ''); qs('#message').textContent = data.message || '歌曲已删除'; } catch (error) { qs('#message').textContent = error.message; } return; } const detailButton = event.target.closest('.song-detail'); if (detailButton) { await openSongDetail(detailButton.dataset.id, { selectSong }); return; } const button = event.target.closest('.song-select'); if (!button) return; selectSong(button.dataset.id); });
     qs('#outputMode')?.addEventListener('change', (event) => { qs('#generateVariants').value = event.target.value === 'variants' ? 'on' : ''; refreshPreflight(); });
     ['#separationMode', '#preRvcCleanupMode', '#rvcPreset', '#vocalStyle'].forEach((selector) => qs(selector)?.addEventListener('change', () => { clearErrorAdvice(); refreshPreflight(); }));
     qs('#demoPresetButton')?.addEventListener('click', applyDemoPreset);
-    qs('#voice')?.addEventListener('change', refreshPreflight);
-    qs('#song')?.addEventListener('change', refreshPreflight);
+    qs('#voice')?.addEventListener('change', () => { refreshUploadPreviews(); refreshPreflight(); });
+    qs('#song')?.addEventListener('change', () => { refreshUploadPreviews(); refreshPreflight(); });
+    qs('#voiceSourceType')?.addEventListener('change', refreshUploadPreviews);
+    qs('#separationMode')?.addEventListener('change', refreshUploadPreviews);
     qs('#voiceDetailClose')?.addEventListener('click', closeVoiceDetail);
     qs('#voiceDetailModal')?.addEventListener('click', (event) => { if (event.target.id === 'voiceDetailModal') closeVoiceDetail(); });
+    qs('#songDetailClose')?.addEventListener('click', closeSongDetail);
+    qs('#songDetailModal')?.addEventListener('click', (event) => { if (event.target.id === 'songDetailModal') closeSongDetail(); });
     qs('#saveVoiceButton')?.addEventListener('click', async () => { const body = new FormData(); const files = qs('#voice').files; Array.from(files).forEach((file) => body.append('voice', file)); body.append('voice_name', qs('#voiceName').value || '未命名音色'); const sourceType = qs('#voiceSourceType')?.value || 'clean_voice'; body.append('voice_source_type', sourceType); qs('#voiceSaveMessage').textContent = sourceType === 'mixed_voice' ? '正在分离人声并保存...' : (isRvc() ? '正在创建 RVC 音色库...' : '正在保存参考声音...'); try { const data = await api.post(isRvc() ? '/api/create-voice-profile' : '/api/save-voice', body); upsertVoiceOption(data); selectVoice(data.id); qs('#voiceSaveMessage').textContent = data.message || '已保存'; await loadRvcTrainingDetails(); } catch (error) { qs('#voiceSaveMessage').textContent = error.message; } });
     const addVoiceSample = async ({ trainAfter = false } = {}) => {
       if (!state.selectedVoiceId) {
@@ -392,6 +411,7 @@ export const DashboardView = {
     qs('#form').addEventListener('submit', async (event) => { event.preventDefault(); clearErrorAdvice(); refreshPreflight(); const validation = validateBeforeGenerate(); if (validation) { qs('#message').textContent = validation; return; } qs('#message').textContent = isRvc() ? '正在 RVC 正式生成...' : '正在 Seed-VC 快速试听...'; const body = new FormData(qs('#form')); body.set('engine_id', state.selectedEngine); body.set('voice_profile_id', state.selectedVoiceId); body.set('song_id', state.selectedSongId); try { const data = await api.generate(body); renderResult(data); qs('#message').textContent = data.message || '生成完成'; } catch (error) { qs('#message').textContent = error.message; showErrorAdvice(error); } });
     loadRvcTrainingDetails();
     if (options.demo) applyDemoPreset();
+    refreshUploadPreviews();
     refreshPreflight();
   },
 };
