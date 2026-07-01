@@ -8,5 +8,5 @@ export function HistoryItem(job) {
     job.has_dry_vocal_wav ? `<a class="download secondary" href="/download/history/${id}/dry_vocal.wav">干声 WAV</a>` : '',
   ].filter(Boolean).join('');
   const fallback = actions || '<span class="muted">文件缺失</span>';
-  return `<article class="history-row"><strong>${escapeHtml(job.song_title || '未命名歌曲')}</strong><span>${escapeHtml(job.voice_profile_name || '未命名音色')}</span><span>${escapeHtml(job.engine_id || '-')}</span><span>${formatNumber(job.total_seconds, 1)}秒</span><div class="button-row">${fallback}</div></article>`;
+  return `<article class="history-row"><strong>${escapeHtml(job.song_title || '未命名歌曲')}</strong><span>${escapeHtml(job.voice_profile_name || '未命名音色')}</span><span>${escapeHtml(job.engine_id || '-')}</span><span>${formatNumber(job.total_seconds, 1)}秒</span><div class="button-row"><button class="secondary history-detail" data-id="${id}" type="button">查看详情</button>${fallback}</div></article>`;
 }

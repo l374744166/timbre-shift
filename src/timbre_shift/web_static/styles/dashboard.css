@@ -176,3 +176,18 @@
 .detail-row span {color:var(--muted);
   font-size:13px}
 @media(max-width:760px) {.detail-columns {grid-template-columns:1fr}}
+.error-advice {margin-top:12px;
+  border:1px solid rgba(214,69,69,.28);
+  border-radius:14px;
+  padding:12px 14px;
+  background:#FFF5F5;
+  color:var(--text)}
+.error-advice strong {display:block;
+  color:var(--error);
+  margin-bottom:5px}
+.error-advice p {margin:0 0 8px;
+  color:var(--muted)}
+.error-advice ul {margin:0;
+  padding-left:18px;
+  display:grid;
+  gap:4px}

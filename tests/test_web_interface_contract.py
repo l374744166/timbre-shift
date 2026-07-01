@@ -59,6 +59,8 @@ def test_frontend_does_not_call_unknown_api_routes():
         '/api/select-variant',
         '/api/variant-feedback',
         '/api/tts-generate',
+        '/api/history-restore',
+        '/api/history-delete',
     }
     frontend = '\n'.join(path.read_text() for path in Path('src/timbre_shift/web_static').rglob('*.js'))
     import re

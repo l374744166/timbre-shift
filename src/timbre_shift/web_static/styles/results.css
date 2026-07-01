@@ -73,3 +73,12 @@
   padding-left:9px;
   color:var(--muted);
   line-height:1.5}
+.history-detail-modal {width:min(820px,100%)}
+.history-detail-body {display:grid;
+  gap:14px}
+.history-player {border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px;
+  background:#fff}
+.history-player h4 {margin:0 0 8px}
+.history-player audio {width:100%}

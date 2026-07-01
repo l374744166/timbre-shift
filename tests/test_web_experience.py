@@ -16,6 +16,8 @@ def test_ui_uses_product_workstation_shell_and_module_assets():
     training_panel_js = (static_root / "views" / "DashboardTrainingPanel.js").read_text()
     preflight_js = (static_root / "views" / "DashboardPreflight.js").read_text()
     voice_detail_js = (static_root / "views" / "DashboardVoiceDetail.js").read_text()
+    error_tips_js = (static_root / "views" / "DashboardErrorTips.js").read_text()
+    history_detail_js = (static_root / "views" / "HistoryDetailModal.js").read_text()
     result_js = (static_root / "components" / "ResultCard.js").read_text()
     variant_js = (static_root / "components" / "VariantCard.js").read_text()
     base_css = (static_root / "styles" / "base.css").read_text()
@@ -46,6 +48,10 @@ def test_ui_uses_product_workstation_shell_and_module_assets():
     assert "混音风格" in dashboard_js
     assert "生成前检查" in preflight_js
     assert "voiceDetailModal" in voice_detail_js
+    assert "生成失败建议" in error_tips_js
+    assert "history-restore" in history_detail_js
+    assert "history-delete" in history_detail_js
+    assert "演示推荐配置" in dashboard_js
     assert "scrollIntoView" in dashboard_js
     assert "RVC 训练设置" in training_panel_js
     assert "打开训练设置" in training_panel_js
